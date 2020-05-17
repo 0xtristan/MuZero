@@ -4,6 +4,8 @@
 from tensorflow.keras.optimizers import Adam, Optimizer
 from tensorflow.compat.v1.train import get_global_step
 import ray
+from tqdm import tqdm
+import time
 
 from .config import MuZeroConfig
 from .storage import SharedStorage, ReplayBuffer
@@ -12,17 +14,20 @@ from .models import Network
 @ray.remote
 def train_network(config: MuZeroConfig, storage: SharedStorage,
                                     replay_buffer: ReplayBuffer):
-    while len(replay_buffer.buffer)==0: pass
+#     while len(replay_buffer.buffer)==0: time.sleep(1)
+    while ray.get(replay_buffer.get_buffer_size.remote()) < 1:
+        time.sleep(1)
     network = Network()
     learning_rate = config.lr_init * config.lr_decay_rate**(
 #           get_global_step() / config.lr_decay_steps)
             1)
     optimizer = Adam(learning_rate, config.momentum)
 
-    for i in range(config.training_steps):
+    for i in tqdm(range(config.training_steps), desc='Training iter'):
         if i % config.checkpoint_interval == 0:
             storage.save_network(i, network)
-        batch = replay_buffer.sample_batch(config.num_unroll_steps, config.td_steps)
+        ray_id = replay_buffer.sample_batch.remote(config.num_unroll_steps, config.td_steps)
+        batch = ray.get(ray_id)
         update_weights(optimizer, network, batch, config.weight_decay)
     storage.save_network(config.training_steps, network)
 

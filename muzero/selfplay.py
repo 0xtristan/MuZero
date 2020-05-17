@@ -5,8 +5,8 @@ import numpy as np
 from .config import MuZeroConfig
 from .storage import SharedStorage, ReplayBuffer
 from .models import Network
-from .env import Game, Node
-from .mcts_numpy import expand_node, run_mcts, add_exploration_noise, select_action
+from .env import Game
+from .mcts_numpy import Node, expand_node, run_mcts, add_exploration_noise, select_action
 
 # Each self-play job is independent of all others; it takes the latest network
 # snapshot, produces a game and makes it available to the training job by
@@ -16,10 +16,12 @@ def run_selfplay(config: MuZeroConfig, storage: SharedStorage,
                  replay_buffer: ReplayBuffer):
     # tf.summary.trace_on()
     for i in tqdm(range(config.selfplay_iterations), desc='Self-play iter'):
+#         ray_call_id = storage.latest_network.remote()
+#         network = ray.get(ray_call_id) # serial/blocking call
         network = storage.latest_network()
         game = play_game(config, network)
         print(game.root_values)
-        replay_buffer.save_game(game)
+        replay_buffer.save_game.remote(game)
         # tf.summary.trace_export("Selfplay", step=i, profiler_outdir='logs')
     # tf.summary.trace_off()
 
@@ -35,7 +37,7 @@ def play_game(config: MuZeroConfig, network: Network) -> Game:
     while not game.terminal() and len(game.history) < config.max_moves:
         # At the root of the search tree we use the representation function h to
         # obtain a hidden state given the current observation.
-        root = Node(config, 0)
+        root = Node(config, action=None)
         current_observation = game.make_image(-1) # 80x80x32 tf.Tensor
         expand_node(config, root, game.legal_actions(),
                     network.initial_inference(current_observation))

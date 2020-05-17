@@ -15,18 +15,20 @@ class Muzero(object):
     def __init__(self, config: MuZeroConfig):
         self.config = config
         self.storage = SharedStorage()
-        self.replay_buffer = ReplayBuffer(config)
+#         self.replay_buffer = ReplayBuffer(config)
         
     def launch_job(self, f, *args):
-    #   f(*args)
+#         f(*args)
         f.remote(*args)
     
     def run(self):
         # Configure worker processes
         train_worker = train_network.options(num_gpus=self.config.num_train_gpus)
+#         shared_storage_worker = SharedStorage.remote()
+        replay_buffer_worker = ReplayBuffer.remote(self.config)
         
         # Launch worker processes
         for _ in range(self.config.num_actors):
-            self.launch_job(run_selfplay, self.config, self.storage, self.replay_buffer)
-        self.launch_job(train_network, self.config, self.storage, self.replay_buffer)
+            self.launch_job(run_selfplay, self.config, self.storage, replay_buffer_worker)
+        self.launch_job(train_network, self.config, self.storage, replay_buffer_worker)
 #         best_network = self.storage.latest_network()

@@ -8,6 +8,9 @@ from .common import MAXIMUM_FLOAT_VALUE, KnownBounds
 from .config import MuZeroConfig
 from .models import Network, NetworkOutput
 
+# MCTS optimised for Numpy
+# Inspiration: https://www.moderndescartes.com/essays/deep_dive_mcts/
+
 class MinMaxStats(object):
     """A class that holds the min-max values of the tree."""
 
@@ -18,12 +21,6 @@ class MinMaxStats(object):
     def update(self, value: float):
         self.maximum = max(self.maximum, value)
         self.minimum = min(self.minimum, value)
-
-#     def normalize(self, value: float) -> float:
-#         if self.maximum > self.minimum:
-#             # We normalize only when we have set the maximum and minimum values.
-#             return (value - self.minimum) / (self.maximum - self.minimum)
-#         return value
     
     def normalize(self, value: np.array) -> np.array:
         if self.maximum > self.minimum:
@@ -35,7 +32,7 @@ class DummyNode(object):
     def __init__(self):
         self.parent = None
         self.child_value_sum = collections.defaultdict(float)
-        self.child_visit_count = collections.defaultdict(float)
+        self.child_visit_count = collections.defaultdict(int)
         self.child_rewards = collections.defaultdict(float)
 
 # Change so that each node knows children stats rather than its own
@@ -50,11 +47,8 @@ class Node(object):
         self.is_expanded = False
         self.child_priors = np.zeros([config.action_space_size], dtype=np.float32)
         self.child_value_sum = np.zeros([config.action_space_size], dtype=np.float32)
-        self.child_visit_count = np.zeros([config.action_space_size], dtype=np.float32) # using floats so arithmetic works
+        self.child_visit_count = np.zeros([config.action_space_size], dtype=np.int32) # using floats so arithmetic works
         self.child_rewards = np.zeros([config.action_space_size], dtype=np.float32)
-
-#     def expanded(self) -> bool:
-#         return self.is_expanded # len(self.children) > 0
 
     def value(self) -> float:
         if self.visit_count == 0:
@@ -131,6 +125,7 @@ def run_mcts(config: MuZeroConfig, root: Node, action_history: ActionHistory,
 
         # Traverse tree, expanding by highest UCB until leaf reached
         while node.is_expanded:
+            node.visit_count += 1 # This is part of the virtual losses trick
             action = best_move(config, node, min_max_stats) # UCB selection
             node = maybe_add_child(config, action, node) # adds child if it doesn't already exist
             history.add_action(action)
@@ -148,7 +143,7 @@ def run_mcts(config: MuZeroConfig, root: Node, action_history: ActionHistory,
         expand_node(config, node, history.action_space(), network_output)
 
         # back up values to the root node
-        backpropagate(search_path, network_output.value, config.discount, 
+        backpropagate(search_path, float(network_output.value), config.discount, 
                       min_max_stats)
 
         
@@ -156,9 +151,6 @@ def run_mcts(config: MuZeroConfig, root: Node, action_history: ActionHistory,
         
 # Select the child with the highest UCB score.
 def best_move(config: MuZeroConfig, node: Node, min_max_stats: MinMaxStats):
-#     _, action, child = max(
-#         (ucb_score(config, node, child, min_max_stats), action,
-#          child) for action, child in node.children.items())
     action = np.argmax(ucb_score(config, node, min_max_stats)) # ucb_score should return a np.array
     return action
 
@@ -199,8 +191,6 @@ def expand_node(config: MuZeroConfig, node: Node, actions: List[int], network_ou
     policy = np.exp(network_output.policy_logits) # unnormalised probabilities
     policy_sum = np.sum(policy) 
     node.child_priors = policy / policy_sum
-#     for action in range(len(policy)):
-#         node.children[action] = Node(config, action, node)
         
 
 #### iii. Backup: Search Tree Update/Backprop
@@ -211,9 +201,8 @@ def backpropagate(search_path: List[Node], value: float, discount: float, min_ma
     # Traverse back up UCB search path
     for node in reversed(search_path):
         node.value_sum += value # if node.to_play == to_play else -value
-        node.visit_count += 1
+#         node.visit_count += 1
         min_max_stats.update(node.value())
-
         value = discount * value + node.reward
         
         
@@ -236,7 +225,7 @@ def select_action(config: MuZeroConfig, num_moves: int, node: Node,
     # Get softmax temp
     t = config.visit_softmax_temperature_fn(
         num_moves=num_moves, training_steps=network.training_steps())
-    action = softmax_sample(node.children_visit_counts, t)
+    action = softmax_sample(node.child_visit_count, t)
     return action
 
 def softmax_sample(distribution, T: float):

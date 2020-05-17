@@ -87,10 +87,8 @@ class Game(object):
         # Cast to tensor and add dummy batch dim
         # Todo: figure out how to stack RGB images - i.e. colour & time dimensions
         frame_tensor = tf.convert_to_tensor(np.stack(frames,axis=-1))
-        # If we're missing a channel dim add one
-        # if len(frame_tensor.shape)==3:
-        #     frame_tensor = frame_tensor.expand_dims(-1) # this is wrong
         # Pad out sequences with insufficient history
+        # I believe there is a bug here because the get_batch() gets a -1  pad value
         padding_size = feat_history_len-frame_tensor.shape[-1]
         padded_frames = tf.pad(frame_tensor, paddings=[[0, 0], [0, 0], [padding_size, 0]], constant_values=0)
         padded_frames = tf.expand_dims(padded_frames, 0) # dummy batch dim for 4D

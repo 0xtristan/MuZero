@@ -1,9 +1,11 @@
 import random
+import ray
 
 from .config import MuZeroConfig
 from .env import Game
 from .models import Network
 
+@ray.remote
 class ReplayBuffer(object):
     """Stores the target tuples to sample from later during training"""
     def __init__(self, config: MuZeroConfig):
@@ -34,8 +36,6 @@ class ReplayBuffer(object):
     def sample_game(self) -> Game:
         # TODO: figure out sampling regime
         # Sample game from buffer either uniformly or according to some priority e.g. importance sampling.
-        print(len(self.buffer))
-#         if len(self.buffer) == 0: return None
         game_ix = random.randint(0,len(self.buffer)-1) # random uniform
         return self.buffer[game_ix]
 
@@ -44,7 +44,10 @@ class ReplayBuffer(object):
         pos_ix = random.randint(0,len(game.root_values)-1) # random uniform
         return pos_ix
     
+    def get_buffer_size(self):
+        return len(self.buffer)
     
+# @ray.remote  
 class SharedStorage(object):
 
     def __init__(self):
