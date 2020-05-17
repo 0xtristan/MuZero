@@ -16,7 +16,8 @@ class MuZeroConfig(object):
                 lr_init: float,
                 lr_decay_steps: float,
                 visit_softmax_temperature_fn,
-                known_bounds: Optional[KnownBounds] = None):
+                known_bounds: Optional[KnownBounds] = None,
+                num_train_gpus = 0):
         ### Self-Play
         self.action_space_size = action_space_size
         self.num_actors = num_actors
@@ -56,6 +57,6 @@ class MuZeroConfig(object):
         self.lr_init = lr_init
         self.lr_decay_rate = 0.1
         self.lr_decay_steps = lr_decay_steps
-
-#     def new_game(self):
-#         return Game(self.action_space_size, self.discount)
+        
+        # Training devices
+        self.num_train_gpus = num_train_gpus

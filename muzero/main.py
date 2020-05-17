@@ -22,6 +22,10 @@ class Muzero(object):
         f.remote(*args)
     
     def run(self):
+        # Configure worker processes
+        train_worker = train_network.options(num_gpus=self.config.num_train_gpus)
+        
+        # Launch worker processes
         for _ in range(self.config.num_actors):
             self.launch_job(run_selfplay, self.config, self.storage, self.replay_buffer)
         self.launch_job(train_network, self.config, self.storage, self.replay_buffer)

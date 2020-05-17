@@ -78,7 +78,7 @@ class Game(object):
         # search value ν
         self.root_values.append(root.value())
     
-    def make_image(self, t: int, feat_history_len:int = 32):
+    def make_image(self, t: int, feat_history_len:int = 32) -> tf.Tensor:
         """Observation at chosen position w/ history"""
         # Game specific feature planes
         # For Atari we have the 32 most recent RGB frames at resolution 96x96

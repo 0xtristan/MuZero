@@ -18,18 +18,14 @@ class Network(object):
         self.h = ReprNet((80,80,32), nf)
         self.steps = 0
 
-#     @tf.function
     def initial_inference(self, obs) -> NetworkOutput:
         # representation + prediction function
         # input: 32x80x80 observation
         state = self.h(obs)
         policy_logits, value = self.f(state)
-        # state, policy_logits, value = self.initial_inference_compiled(obs)
-        # policy = {Action(i):p for i,p in enumerate(policy_logits[0])}
         policy = policy_logits[0]
         return NetworkOutput(value[0], 0.0, policy, state) # keep state 4D
     
-#     @tf.function
     def recurrent_inference(self, state, action) -> NetworkOutput:
         # dynamics + prediction function
         # Input: hidden state nfx5x5
@@ -37,8 +33,6 @@ class Network(object):
         state_action = tf.pad(state, paddings=[[0, 0], [0, 0], [0, 0], [0, 1]], constant_values=action)
         next_state, reward =  self.g(state_action)
         policy_logits, value = self.f(next_state)
-        # next_state, reward, policy_logits, value = self.recurrent_inference_compiled(state, action)
-        # policy = {Action(i):p for i,p in enumerate(policy_logits[0])}
         policy = policy_logits[0]
         return NetworkOutput(value[0], reward[0], policy, next_state)
 
