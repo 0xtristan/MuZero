@@ -21,14 +21,20 @@ class Muzero(object):
 #         f(*args)
         f.remote(*args)
     
+    # Helpful for debugging
+    def launch_job_serial(self, f, *args):
+        f(*args)
+#         f.remote(*args)
+    
     def run(self):
         # Configure worker processes
-        train_worker = train_network.options(num_gpus=self.config.num_train_gpus)
+#         train_worker = train_network.options(num_gpus=self.config.num_train_gpus)
 #         shared_storage_worker = SharedStorage.remote()
         replay_buffer_worker = ReplayBuffer.remote(self.config)
         
         # Launch worker processes
         for _ in range(self.config.num_actors):
             self.launch_job(run_selfplay, self.config, self.storage, replay_buffer_worker)
-        self.launch_job(train_network, self.config, self.storage, replay_buffer_worker)
+#         self.launch_job(train_worker, self.config, self.storage, replay_buffer_worker)
+        self.launch_job_serial(train_network, self.config, self.storage, replay_buffer_worker)
 #         best_network = self.storage.latest_network()

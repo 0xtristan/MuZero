@@ -6,6 +6,7 @@ class MuZeroConfig(object):
 
     def __init__(self,
                 action_space_size: int,
+                selfplay_iterations: int,
                 max_moves: int,
                 discount: float,
                 dirichlet_alpha: float,
@@ -42,7 +43,7 @@ class MuZeroConfig(object):
         self.known_bounds = known_bounds
 
         ### Training
-        self.selfplay_iterations = int(1) ##
+        self.selfplay_iterations = selfplay_iterations ##
         self.training_steps = int(1000e3)
         self.checkpoint_interval = int(1e3)
         self.window_size = int(1e6)

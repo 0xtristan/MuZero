@@ -1,6 +1,7 @@
 ##################################
 ####### Part 2: Training #########
 
+import tensorflow as tf
 from tensorflow.keras.optimizers import Adam, Optimizer
 from tensorflow.compat.v1.train import get_global_step
 import ray
@@ -11,7 +12,10 @@ from .config import MuZeroConfig
 from .storage import SharedStorage, ReplayBuffer
 from .models import Network
 
-@ray.remote
+cce_loss = tf.keras.losses.CategoricalCrossentropy(from_logits=False)
+cce_loss_logits = tf.keras.losses.CategoricalCrossentropy(from_logits=True)
+
+# @ray.remote
 def train_network(config: MuZeroConfig, storage: SharedStorage,
                                     replay_buffer: ReplayBuffer):
 #     while len(replay_buffer.buffer)==0: time.sleep(1)
@@ -37,6 +41,7 @@ def scale_gradient(tensor, scale):
     return tensor * scale + tf.stop_gradient(tensor) * (1 - scale)
 
 
+# BPTT - this code can surely be vectorised - yes it really does rather than looping over batches
 def update_weights(optimizer: Optimizer, network: Network, batch,
                                      weight_decay: float):
     loss = 0
@@ -57,10 +62,10 @@ def update_weights(optimizer: Optimizer, network: Network, batch,
             target_value, target_reward, target_policy = target
 
             l = (
-                scalar_loss(value, target_value) +
-                scalar_loss(reward, target_reward) +
-                tf.nn.softmax_cross_entropy_with_logits(
-                        logits=policy_logits, labels=target_policy))
+                scalar_loss(value, target_value) + # value
+                scalar_loss(reward, target_reward) + # reward
+                cce_loss_logits(policy_logits, target_policy) # action
+            )
 
             loss += scale_gradient(l, gradient_scale)
 
@@ -70,6 +75,9 @@ def update_weights(optimizer: Optimizer, network: Network, batch,
     optimizer.minimize(loss)
 
 
+# Use categorical/softmax cross-entropy loss rather than binary/logistic
+# Value and reward are non-logits, actions are logits
 def scalar_loss(prediction, target) -> float:
     # MSE in board games, cross entropy between categorical values in Atari.
-    return -1
+    prediction, target = tf.constant([prediction,]), tf.constant([target,])
+    return cce_loss(prediction, target)

@@ -18,13 +18,17 @@ class Network(object):
         self.h = ReprNet((80,80,32), nf)
         self.steps = 0
 
+    # TODO: Think about what dtypes we want to return/save
+    # state should be Tensor because it is re-used in recurrent_inference()
+    # Should the value,reward scalars be stored as floats?
+    # Should action_logits/policy be stored as np.array or tf.Tensor?
     def initial_inference(self, obs) -> NetworkOutput:
         # representation + prediction function
         # input: 32x80x80 observation
         state = self.h(obs)
         policy_logits, value = self.f(state)
         policy = policy_logits[0]
-        return NetworkOutput(value[0], 0.0, policy, state) # keep state 4D
+        return NetworkOutput(float(value[0]), 0.0, policy.numpy(), state) # keep state 4D
     
     def recurrent_inference(self, state, action) -> NetworkOutput:
         # dynamics + prediction function
@@ -34,7 +38,7 @@ class Network(object):
         next_state, reward =  self.g(state_action)
         policy_logits, value = self.f(next_state)
         policy = policy_logits[0]
-        return NetworkOutput(value[0], reward[0], policy, next_state)
+        return NetworkOutput(float(value[0]), reward[0], policy.numpy(), next_state)
 
     def get_weights(self):
         # Returns the weights of this network.
