@@ -15,6 +15,13 @@ from .models import Network
 cce_loss = tf.keras.losses.CategoricalCrossentropy(from_logits=False)
 cce_loss_logits = tf.keras.losses.CategoricalCrossentropy(from_logits=True)
 
+def batch_to_tf_batch(batch):
+    image_batch = tf.stack([tf.squeeze(b[0]) for b in batch],axis=0)
+    action_batch = tf.stack([tf.pad(b[1],paddings=[[0,5-len(b[1])]]) for b in batch], axis=0)
+    # This target one won't work because the (v,r,a) tuple is <6 elements when a is []
+    target_batch = tf.stack([tf.pad(tf.stack([(v,r,*a) for v,r,a in b[2]]), paddings=[[0,5+1-len(b[2])],[0,0]]) for b in batch])
+    return (image_batch, action_batch, reward_batch)
+
 # @ray.remote
 def train_network(config: MuZeroConfig, storage: SharedStorage,
                                     replay_buffer: ReplayBuffer):
@@ -32,7 +39,9 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
             storage.save_network(i, network)
         ray_id = replay_buffer.sample_batch.remote(config.num_unroll_steps, config.td_steps)
         batch = ray.get(ray_id)
-        update_weights(optimizer, network, batch, config.weight_decay)
+        vector_batch = batch_to_tf_batch(batch)
+        train_step(optimizer, network, vector_batch, config.weight_decay)
+#         update_weights(optimizer, network, batch, config.weight_decay)
     storage.save_network(config.training_steps, network)
 
 
@@ -73,11 +82,58 @@ def update_weights(optimizer: Optimizer, network: Network, batch,
         loss += weight_decay * tf.nn.l2_loss(weights)
 
     optimizer.minimize(loss)
+        
+        
+# @tf.function
+def train_step(optimizer: Optimizer, network: Network, batch,
+                                     weight_decay: float):
+    """
+    Batch is 3-tuple of:
+    Image (N,80,80,1)
+    Actions (N,K)
+    Targets (N,K+1,(v,p,r))
+    """
+    image, actions, targets = batch
+    with tf.GradientTape() as tape:
+        # training=True is only needed if there are layers with different
+        # behavior during training versus inference (e.g. Dropout).
+
+        K = targets.shape[1] # seqlen
+        for k in range(K):
+            if k==0:
+                # Initial step, from the real observation.
+                value, reward, policy_logits, hidden_state = network.initial_inference(image)
+                gradient_scale, value, reward, policy_logits = (1.0, value, reward, policy_logits)
+            else:
+                # All following steps
+                value, reward, policy_logits, hidden_state = network.recurrent_inference(hidden_state, action[:,k])
+                gradient_scale, value, reward, policy_logits = (1.0 / len(actions), value, reward, policy_logits)
+
+            hidden_state = scale_gradient(hidden_state, 0.5)
+            
+            target_value, target_reward, target_policy = target[:,k,:]
+
+            l = (
+                cce_loss(value, target_value) + # value
+                cce_loss(reward, target_reward) + # reward
+                cce_loss_logits(policy_logits, target_policy) # action
+            )
+
+            loss += scale_gradient(l, gradient_scale)
+        
+        # Todo: Eventually we want to use keras layer regularization or AdamW
+        for weights in network.get_weights():
+            loss += weight_decay * tf.nn.l2_loss(weights)
+            
+    gradients = tape.gradient(loss, model.trainable_variables)
+    optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+
+#     train_loss(loss)
+#     train_accuracy(labels, predictions)
 
 
 # Use categorical/softmax cross-entropy loss rather than binary/logistic
 # Value and reward are non-logits, actions are logits
 def scalar_loss(prediction, target) -> float:
     # MSE in board games, cross entropy between categorical values in Atari.
-    prediction, target = tf.constant([prediction,]), tf.constant([target,])
     return cce_loss(prediction, target)
