@@ -32,7 +32,7 @@ def run_selfplay(config: MuZeroConfig, storage: SharedStorage,
 # repeatedly executing a Monte Carlo Tree Search to generate moves until the end
 # of the game is reached.
 def play_game(config: MuZeroConfig, network: Network) -> Game:
-    game = Game(config.action_space_size, config.discount)
+    game = Game(config)
 
     while not game.terminal() and len(game.history) < config.max_moves:
         # At the root of the search tree we use the representation function h to

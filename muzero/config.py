@@ -5,6 +5,7 @@ from .common import KnownBounds
 class MuZeroConfig(object):
 
     def __init__(self,
+                gym_env_name: str,
                 action_space_size: int,
                 selfplay_iterations: int,
                 max_moves: int,
@@ -19,6 +20,12 @@ class MuZeroConfig(object):
                 visit_softmax_temperature_fn,
                 known_bounds: Optional[KnownBounds] = None,
                 num_train_gpus = 0):
+        # Env
+        self.gym_env_name = gym_env_name
+        
+        # Model
+        self.model_type = "fc" # "cnn"
+        
         ### Self-Play
         self.action_space_size = action_space_size
         self.num_actors = num_actors

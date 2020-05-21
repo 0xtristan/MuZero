@@ -14,7 +14,7 @@ from .train import train_network
 class Muzero(object):
     def __init__(self, config: MuZeroConfig):
         self.config = config
-        self.storage = SharedStorage()
+        self.storage = SharedStorage(config)
 #         self.replay_buffer = ReplayBuffer(config)
         
     def launch_job(self, f, *args):

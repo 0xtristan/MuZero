@@ -50,7 +50,7 @@ class ReplayBuffer(object):
 # @ray.remote  
 class SharedStorage(object):
 
-    def __init__(self):
+    def __init__(self, config):
         self._networks = {}
 
     def latest_network(self) -> Network:
@@ -58,10 +58,10 @@ class SharedStorage(object):
             return self._networks[max(self._networks.keys())]
         else:
             # policy -> uniform, value -> 0, reward -> 0
-            return make_uniform_network()
+            return make_uniform_network(config)
 
     def save_network(self, step: int, network: Network):
         self._networks[step] = network
 
-def make_uniform_network():
-    return Network()
+def make_uniform_network(config: MuZeroConfig):
+    return Network_FC(config) if self.model_type = "fc" else Network_CNN(config)

@@ -22,6 +22,7 @@ def batch_to_tf_batch(batch):
     target_batch = tf.stack([tf.pad(tf.stack([(v,r,*a) for v,r,a in b[2]]), paddings=[[0,5+1-len(b[2])],[0,0]]) for b in batch])
     return (image_batch, action_batch, reward_batch)
 
+
 # @ray.remote
 def train_network(config: MuZeroConfig, storage: SharedStorage,
                                     replay_buffer: ReplayBuffer):

@@ -5,6 +5,7 @@ import tensorflow as tf
 import numpy as np
 
 from .mcts import Node, ActionHistory
+from .config import MuZeroConfig
 
 ENVS = {
     'breakout': 'Breakout-v0',
@@ -14,20 +15,22 @@ ENVS = {
 
 class Environment(object):
     """The environment MuZero is interacting with."""
-    def __init__(self):
-        self.env = gym.make(ENVS['breakout'])
+    def __init__(self, config: MuZeroConfig):
+        self.env = gym.make(config.gym_env_name)
         self.obs_history = [self.prepro(self.env.reset())]
         self.done = False
+        self.prepro = config.gym_env_name=='Breakout-v0'
         
     def step(self, action: int):
         obs, reward, self.done, info = self.env.step(action)
-        self.obs_history.append(self.prepro(obs))
+        if self.prepro:
+            obs = self.prepro(obs)
+        self.obs_history.append(obs)
         return float(reward)
     
     def terminal(self):
         return self.done
     
-    # @tf.function
     def legal_actions(self):
         """Env specific rules for legality of moves
         TODO: if at wall don't allow movement into the wall"""
@@ -38,22 +41,20 @@ class Environment(object):
         p_obs = obs[25:195,:,0] / 255 # crop and normalise to [0,1]
         return cv2.resize(p_obs, size, interpolation=cv2.INTER_NEAREST) # resize
 
-    # def prepro(self, obs, size=(80,80)):
-    #     return obs
     def get_obs(self, start:int, end:int=None):
         return self.obs_history[max(start,0):end]
     
     
 class Game(object):
     """A single episode of interaction with the environment. (One trajectory)"""
-    def __init__(self, action_space_size: int, discount: float):
-        self.env = Environment()
+    def __init__(self, config: MuZeroConfig):
+        self.env = Environment(config)
         self.history = [] # actual actions a
         self.rewards = [] # observed rewards u
         self.child_visits = [] # search tree action distributions pi
         self.root_values = [] # values ν
-        self.action_space_size = action_space_size
-        self.gamma = discount
+        self.action_space_size = config.action_space_size
+        self.gamma = config.discount
     
     def terminal(self) -> bool:
         return self.env.terminal()
