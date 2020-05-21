@@ -3,7 +3,7 @@ import ray
 
 from .config import MuZeroConfig
 from .env import Game
-from .models import Network
+from .models import Network, Network_CNN, Network_FC
 
 @ray.remote
 class ReplayBuffer(object):
@@ -52,16 +52,17 @@ class SharedStorage(object):
 
     def __init__(self, config):
         self._networks = {}
+        self.config = config
 
     def latest_network(self) -> Network:
         if self._networks:
             return self._networks[max(self._networks.keys())]
         else:
             # policy -> uniform, value -> 0, reward -> 0
-            return make_uniform_network(config)
+            return make_uniform_network(self.config)
 
     def save_network(self, step: int, network: Network):
         self._networks[step] = network
 
 def make_uniform_network(config: MuZeroConfig):
-    return Network_FC(config) if self.model_type = "fc" else Network_CNN(config)
+    return Network_FC(config) if config.model_type == "fc" else Network_CNN(config)

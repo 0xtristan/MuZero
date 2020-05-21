@@ -10,7 +10,7 @@ import time
 
 from .config import MuZeroConfig
 from .storage import SharedStorage, ReplayBuffer
-from .models import Network
+from .models import Network, Network_CNN, Network_FC
 
 cce_loss = tf.keras.losses.CategoricalCrossentropy(from_logits=False)
 cce_loss_logits = tf.keras.losses.CategoricalCrossentropy(from_logits=True)
@@ -29,7 +29,7 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
 #     while len(replay_buffer.buffer)==0: time.sleep(1)
     while ray.get(replay_buffer.get_buffer_size.remote()) < 1:
         time.sleep(1)
-    network = Network()
+    network = Network_FC(config) if config.model_type == "fc" else Network_CNN(config) # Network()
     learning_rate = config.lr_init * config.lr_decay_rate**(
 #           get_global_step() / config.lr_decay_steps)
             1)

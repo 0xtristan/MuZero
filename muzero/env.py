@@ -4,7 +4,7 @@ import cv2
 import tensorflow as tf
 import numpy as np
 
-from .mcts import Node, ActionHistory
+from .mcts_numpy import Node, ActionHistory
 from .config import MuZeroConfig
 
 ENVS = {
@@ -17,9 +17,10 @@ class Environment(object):
     """The environment MuZero is interacting with."""
     def __init__(self, config: MuZeroConfig):
         self.env = gym.make(config.gym_env_name)
-        self.obs_history = [self.prepro(self.env.reset())]
-        self.done = False
         self.prepro = config.gym_env_name=='Breakout-v0'
+        initial_state = self.prepro(self.env.reset()) if self.prepro else self.env.reset()
+        self.obs_history = [initial_state]
+        self.done = False
         
     def step(self, action: int):
         obs, reward, self.done, info = self.env.step(action)
@@ -84,6 +85,7 @@ class Game(object):
         # Game specific feature planes
         # For Atari we have the 32 most recent RGB frames at resolution 96x96
         # Instead I use 80x80x1 B&W
+        if t==-1: t=len(self.env.obs_history)-1
         frames = self.env.get_obs(t-feat_history_len+1, t+2) # We want 32 frames up to and including t
         # Cast to tensor and add dummy batch dim
         # Todo: figure out how to stack RGB images - i.e. colour & time dimensions
@@ -91,8 +93,14 @@ class Game(object):
         # Pad out sequences with insufficient history
         # I believe there is a bug here because the get_batch() gets a -1  pad value
         padding_size = feat_history_len-frame_tensor.shape[-1]
-        padded_frames = tf.pad(frame_tensor, paddings=[[0, 0], [0, 0], [padding_size, 0]], constant_values=0)
-        padded_frames = tf.expand_dims(padded_frames, 0) # dummy batch dim for 4D
+        # Todo: should this be [0, padding_size]?? Too tired to test
+        if len(frame_tensor.shape)==2:
+#             padded_frames = tf.pad(frame_tensor, paddings=[[0, 0], [0, padding_size]], constant_values=0)
+            # Fuck it let's just forget the history - this is a shitty hack
+            padded_frames = tf.convert_to_tensor(self.env.obs_history[-1]) # (1,4)
+        else:
+            padded_frames = tf.pad(frame_tensor, paddings=[[0, 0], [0, 0], [padding_size, 0]], constant_values=0)
+        padded_frames = tf.expand_dims(padded_frames, 0) # dummy batch dim
         return padded_frames
     
     def make_target(self, t: int, K: int, td: int):
