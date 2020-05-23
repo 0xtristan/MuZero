@@ -106,7 +106,7 @@ def train_step(optimizer: Optimizer, network: Network, batch,
     Actions (N,K+1) - k=0 is a dummy action -1
     Value Targets (N,K+1)
     Reward Targets (N,K+1)
-    Policy Targets (N,K+1)
+    Policy Targets (N,K+1,A)
     Masks (N,K+1)
     """
     observations, actions, target_values, target_rewards, target_policies, masks = batch
