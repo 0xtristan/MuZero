@@ -58,23 +58,23 @@ class Network_FC(Network):
         # input: 32x80x80 observation
         state = self.h(obs)
         policy_logits, value = self.f(state)
-        policy = policy_logits[0]
-        return NetworkOutput(float(value[0]), 0.0, policy.numpy(), state) # keep state 4D
+        return NetworkOutput(value, tf.zeros_like(value), policy_logits, state) # drop batch dim with [0], state still has batch
     
     def recurrent_inference(self, state, action) -> NetworkOutput:
         # dynamics + prediction function
         # Input: hidden state nfx5x5
         # Concat/pad action to channel dim of states
-        state_action = tf.pad(state, paddings=[[0, 0], [0, 1]], constant_values=action)
+        state_action = tf.concat([state,tf.expand_dims(action,axis=-1)], axis=-1)
         next_state, reward =  self.g(state_action)
         policy_logits, value = self.f(next_state)
-        policy = policy_logits[0]
-        return NetworkOutput(float(value[0]), reward[0], policy.numpy(), next_state)
+        return NetworkOutput(value, reward, policy_logits, next_state)
 
     def get_weights(self):
+        """Retrieves weight tensors
+        Todo: In future come up with a good way to save load from disk - probs just model.save_weights() """
         # Returns the weights of this network.
         self.steps += 1 # probably not ideal
-        return [self.f.parameters(), self.g.parameters(), self.h.parameters()]
+        return [self.f.get_weights(), self.g.get_weights(), self.h.get_weights()]
 
     def training_steps(self) -> int:
         # How many steps / batches the network has been trained for.
@@ -84,19 +84,19 @@ class Network_FC(Network):
 
 def ReprNet_FC(input_shape, h_size):
     o = Input(shape=input_shape)
-    s = Dense(h_size)(o)
+    s = Dense(h_size, activation='tanh')(o) # Since we have +ve and -ve positions, angles, velocities
     return Model(o, s)
 
 def DynaNet_FC(input_shape, h_size):
     s = Input(shape=input_shape)
     s_new = Dense(h_size)(s)
-    r = Dense(1)(s_new)
+    r = Dense(1, activation='sigmoid')(s_new) # rewards are 1 for each frame it stays upright, 0 otherwise
     return Model(s, [s_new, r])
 
 def PredNet_FC(input_shape, num_actions):
     s = Input(shape=input_shape)
-    a = Dense(num_actions)(s)
-    v = Dense(1)(s)
+    a = Dense(num_actions)(s) # policy should be logits
+    v = Dense(1)(s) # This can be a large number
     return Model(s, [a, v])
     
         
@@ -168,14 +168,15 @@ def ReprNet_CNN(input_shape=(80,80,32), nf=128):
     return Model(o, s)
 
 def DynaNet_CNN(input_shape=(5,5,129), nf=128):
+    # Todo: Input normalisation (esp for images)
     s = Input(shape=input_shape)
     x = ConvBlock(s, nf)
     x = ConvBlock(x, nf)
     x = ConvBlock(x, nf)
-    s_new = ConvBlock(x, nf)
+    s_new = ConvBlock(x, nf, activation='sigmoid')
     
     r = Flatten()(s_new)
-    r = Dense(1)(r)
+    r = Dense(1)(r) # Rewards can usually scale arbitrarily high - needs support implementation
     return Model(s, [s_new, r])
 
 def PredNet_CNN(input_shape=(5,5,128), nf=64, num_actions=4):
@@ -184,6 +185,6 @@ def PredNet_CNN(input_shape=(5,5,128), nf=64, num_actions=4):
     x = ConvBlock(x, nf//2) 
     x = Flatten()(x)
 
-    a = Dense(num_actions)(x)
-    v = Dense(1)(x)
+    a = Dense(num_actions)(x) # policy logits - no activation
+    v = Dense(1)(x) # value probably has to be >1 from unscaled rewards
     return Model(s, [a, v])

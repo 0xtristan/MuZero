@@ -1,6 +1,8 @@
 import ray
 from tqdm import tqdm
 import numpy as np
+import tensorflow as tf
+import pdb
 
 from .config import MuZeroConfig
 from .storage import SharedStorage, ReplayBuffer
@@ -20,7 +22,7 @@ def run_selfplay(config: MuZeroConfig, storage: SharedStorage,
 #         network = ray.get(ray_call_id) # serial/blocking call
         network = storage.latest_network()
         game = play_game(config, network)
-        print(game.root_values)
+#         print(game.root_values)
         replay_buffer.save_game.remote(game)
         # tf.summary.trace_export("Selfplay", step=i, profiler_outdir='logs')
     # tf.summary.trace_off()
@@ -38,7 +40,7 @@ def play_game(config: MuZeroConfig, network: Network) -> Game:
         # At the root of the search tree we use the representation function h to
         # obtain a hidden state given the current observation.
         root = Node(config, action=None)
-        current_observation = game.make_image(-1) # 80x80x32 tf.Tensor
+        current_observation = tf.expand_dims(game.make_image(-1), 0) # 1x80x80x32 tf.Tensor - needs dummy batch dim
         expand_node(config, root, game.legal_actions(),
                     network.initial_inference(current_observation))
         add_exploration_noise(config, root)
