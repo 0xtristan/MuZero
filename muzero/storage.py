@@ -85,18 +85,20 @@ class ReplayBuffer(object):
 class SharedStorage(object):
 
     def __init__(self, config):
-        self._networks = {}
+        self._weights = {}
         self.config = config
 
-    def latest_network(self) -> Network:
-        if self._networks:
-            return self._networks[max(self._networks.keys())]
+    def latest_weights(self) -> Network:
+        if self._weights:
+            return self._weights[max(self._weights.keys())]
         else:
             # policy -> uniform, value -> 0, reward -> 0
             return make_uniform_network(self.config)
 
-    def save_network(self, step: int, network: Network):
-        self._networks[step] = network
+    def save_weights(self, step: int, weights):
+        self._weights[step] = weights
 
 def make_uniform_network(config: MuZeroConfig):
-    return Network_FC(config) if config.model_type == "fc" else Network_CNN(config)
+    # Todo: this is a bit shit, how can we do it better?
+    net = Network_FC(config) if config.model_type == "fc" else Network_CNN(config)
+    return net.get_weights()

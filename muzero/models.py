@@ -3,7 +3,7 @@ from tensorflow.keras.layers import Conv2D, BatchNormalization, Dense, Add, ReLU
 from tensorflow.keras.models import Model
 from typing import NamedTuple, List
 from abc import ABC, abstractmethod
-
+import ray
 
 class NetworkOutput(NamedTuple):
     value: float
@@ -17,29 +17,36 @@ class Network(ABC):
     def __init__(self):
         # Initialise a uniform network - should I init these networks explicitly?
         super().__init__()
+        self.f = None
+        self.g = None
+        self.h = None
         self.steps = 0
-        pass
     
     @abstractmethod
     def initial_inference(self, obs) -> NetworkOutput:
-        pass
+        raise NotImplementedError
     
     @abstractmethod
     def recurrent_inference(self, state, action) -> NetworkOutput:
-        pass
+        raise NotImplementedError
 
     def get_weights(self):
+        """Retrieves weight tensors
+        Todo: In future come up with a good way to save load from disk - probs just model.save_weights() """
         # Returns the weights of this network.
         self.steps += 1 # probably not ideal
-        return [self.f.parameters(), self.g.parameters(), self.h.parameters()]
-    
-    def load_latest_weights(self):
-        self.f.load_weights()
+        return (self.f.get_weights(), self.g.get_weights(), self.h.get_weights())
+   
+    # Todo: potentially include remote weight setting here - would mean networks would need access to storage worker
+    def set_weights(self, weights):
+        f_w, g_w, h_w = weights
+        self.f.set_weights(f_w)
+        self.g.set_weights(g_w)
+        self.h.set_weights(h_w)
 
     def training_steps(self) -> int:
         # How many steps / batches the network has been trained for.
         return self.steps
-
     
     
 class Network_FC(Network):
@@ -72,16 +79,13 @@ class Network_FC(Network):
         policy_logits, value = self.f(next_state)
         return NetworkOutput(value, reward, policy_logits, next_state)
 
-    def get_weights(self):
-        """Retrieves weight tensors
-        Todo: In future come up with a good way to save load from disk - probs just model.save_weights() """
-        # Returns the weights of this network.
-        self.steps += 1 # probably not ideal
-        return [self.f.get_weights(), self.g.get_weights(), self.h.get_weights()]
+#     def get_weights(self):
+#         """Retrieves weight tensors
+#         Todo: In future come up with a good way to save load from disk - probs just model.save_weights() """
+#         # Returns the weights of this network.
+#         self.steps += 1 # probably not ideal
+#         return [self.f.get_weights(), self.g.get_weights(), self.h.get_weights()]
 
-    def training_steps(self) -> int:
-        # How many steps / batches the network has been trained for.
-        return self.steps
     
 ### FC Tensorflow model definitions ###
 
@@ -133,15 +137,6 @@ class Network_CNN(Network):
         policy_logits, value = self.f(next_state)
         policy = policy_logits[0]
         return NetworkOutput(float(value[0]), reward[0], policy.numpy(), next_state)
-
-    def get_weights(self):
-        # Returns the weights of this network.
-        self.steps += 1 # probably not ideal
-        return [self.f.parameters(), self.g.parameters(), self.h.parameters()]
-
-    def training_steps(self) -> int:
-        # How many steps / batches the network has been trained for.
-        return self.steps
         
     
 ### CNN Tensorflow model definitions ###

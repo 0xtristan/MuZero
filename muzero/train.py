@@ -30,21 +30,23 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
                                     replay_buffer: ReplayBuffer):
     while ray.get(replay_buffer.get_buffer_size.remote()) < 1:
         time.sleep(1)
+    # Network at start of training will have shit weights
     network = Network_FC(config) if config.model_type == "fc" else Network_CNN(config) # Network()
+#     network_weights = ray.get(storage.latest_weights.remote())
+#     network.set_weights(network_weights)
+    
     learning_rate = config.lr_init * config.lr_decay_rate**(
 #           get_global_step() / config.lr_decay_steps)
             1)
-    optimizer = Adam(learning_rate, config.momentum)
-    
+    optimizer = Adam(learning_rate, config.momentum)  
     progbar = tf.keras.utils.Progbar(config.training_steps, verbose=1, stateful_metrics=None, unit_name='step')
 
     for i in range(config.training_steps): #tqdm(range(config.training_steps), desc='Training iter'):
         if i % config.checkpoint_interval == 0:
-            storage.save_network(i, network.get_weights())
+            storage.save_weights.remote(i, network.get_weights())
         ray_id = replay_buffer.sample_batch.remote(config.num_unroll_steps, config.td_steps)
         batch = ray.get(ray_id)
         train_step(optimizer, network, batch, config.weight_decay)
-#         update_weights(optimizer, network, batch, config.weight_decay)
         progbar.update(i, values=[('Value loss', value_loss_metric.result()),
                                   ('Reward loss', reward_loss_metric.result()),
                                   ('Policy loss', policy_loss_metric.result()),
@@ -55,7 +57,7 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
             reward_loss_metric.reset_states()
             policy_loss_metric.reset_states()
             total_loss_metric.reset_states()
-    storage.save_network.remote(config.training_steps, network)
+    storage.save_weights.remote(config.training_steps, network.get_weights())
 
 
 def scale_gradient(tensor, scale):
@@ -163,82 +165,82 @@ def scalar_loss(prediction, target) -> float:
     return cce_loss(prediction, target)
 
 
-def test_network(config: MuZeroConfig, storage: SharedStorage,
-                                    replay_buffer: ReplayBuffer):
-    while ray.get(replay_buffer.get_buffer_size.remote()) < 1:
-        time.sleep(1)
-    network = storage.latest_network()    
+# def test_network(config: MuZeroConfig, storage: SharedStorage,
+#                                     replay_buffer: ReplayBuffer):
+#     while ray.get(replay_buffer.get_buffer_size.remote()) < 1:
+#         time.sleep(1)
+#     network = storage.latest_network()    
     
-    for i in range(1):
-        ray_id = replay_buffer.sample_batch.remote(50, config.td_steps)
-        batch = ray.get(ray_id)
-        test_step(config, network, batch)
+#     for i in range(1):
+#         ray_id = replay_buffer.sample_batch.remote(50, config.td_steps)
+#         batch = ray.get(ray_id)
+#         test_step(config, network, batch)
         
-def test_step(config:MuZeroConfig, network: Network, batch):
-    """
-    Not finished
-    This should test 
-    We should have 2 functions: one to plot a batch trajectory, another to run inference on a brand new/unseen game in realtime
-    """
-    observations, actions, target_values, target_rewards, target_policies, masks = batch
-    loss = 0
-    value_losses = []
-    reward_losses = []
-    policy_losses = []
-    total_losses =  []
-    total_rewards = []
+# def test_step(config:MuZeroConfig, network: Network, batch):
+#     """
+#     Not finished
+#     This should test 
+#     We should have 2 functions: one to plot a batch trajectory, another to run inference on a brand new/unseen game in realtime
+#     """
+#     observations, actions, target_values, target_rewards, target_policies, masks = batch
+#     loss = 0
+#     value_losses = []
+#     reward_losses = []
+#     policy_losses = []
+#     total_losses =  []
+#     total_rewards = []
               
-    K = actions.shape[1] # seqlen
+#     K = actions.shape[1] # seqlen
          
-    env = gym.make(config.gym_env_name)
-    o = env.reset()
-    render = plt.imshow(env.render(mode='rgb_array'))
-    for k in range(K):
-        render.set_data(env.render(mode='rgb_array')) # just update the data
-        display.display(plt.gcf())
-        display.clear_output(wait=True)
+#     env = gym.make(config.gym_env_name)
+#     o = env.reset()
+#     render = plt.imshow(env.render(mode='rgb_array'))
+#     for k in range(K):
+#         render.set_data(env.render(mode='rgb_array')) # just update the data
+#         display.display(plt.gcf())
+#         display.clear_output(wait=True)
         
-        if k==0:
-            # Initial step, from the real observation.
-            value, reward, policy_logits, hidden_state = network.initial_inference(observations)
-            gradient_scale = 1.0
-        else:
-            # All following steps
-            value, reward, policy_logits, hidden_state = network.recurrent_inference(hidden_state, actions[:,k])
-            gradient_scale = 1.0 / K
+#         if k==0:
+#             # Initial step, from the real observation.
+#             value, reward, policy_logits, hidden_state = network.initial_inference(observations)
+#             gradient_scale = 1.0
+#         else:
+#             # All following steps
+#             value, reward, policy_logits, hidden_state = network.recurrent_inference(hidden_state, actions[:,k])
+#             gradient_scale = 1.0 / K
             
-        # Select action greedily
-        greedy_action = np.argmax(polic_logits)
+#         # Select action greedily
+#         greedy_action = np.argmax(polic_logits)
         
-        # Step in the environment
-        o, r, done, _ = env.step(a)
+#         # Step in the environment
+#         o, r, done, _ = env.step(a)
             
-        hidden_state = scale_gradient(hidden_state, 0.5)
+#         hidden_state = scale_gradient(hidden_state, 0.5)
 
-        # Targets
-        z, u, pi, mask = target_values[:,k], target_rewards[:,k], target_policies[:,k], masks[:,k]
+#         # Targets
+#         z, u, pi, mask = target_values[:,k], target_rewards[:,k], target_policies[:,k], masks[:,k]
 
-        value_loss = mse(value, z)
-        reward_loss = mse(reward, u)
-        policy_loss = mse(policy_logits, pi) 
-        combined_loss = value_loss + reward_loss + policy_loss
+#         value_loss = mse(value, z)
+#         reward_loss = mse(reward, u)
+#         policy_loss = mse(policy_logits, pi) 
+#         combined_loss = value_loss + reward_loss + policy_loss
 
-        loss += scale_gradient(combined_loss, gradient_scale)
+#         loss += scale_gradient(combined_loss, gradient_scale)
         
-        value_losses.append(value_loss)
-        reward_losses.append(reward_loss)
-        policy_losses.append(policy_loss)
-        total_losses.append(loss)
-        total_rewards.append(reward.numpy())
+#         value_losses.append(value_loss)
+#         reward_losses.append(reward_loss)
+#         policy_losses.append(policy_loss)
+#         total_losses.append(loss)
+#         total_rewards.append(reward.numpy())
         
-        if done:
-            print("Episode finished after {} timesteps".format(t+1))
-            break
+#         if done:
+#             print("Episode finished after {} timesteps".format(t+1))
+#             break
 
-    # Metric logging for tensorboard
-    value_loss_metric(value_loss)
-    reward_loss_metric(reward_loss)
-    policy_loss_metric(policy_loss)
+#     # Metric logging for tensorboard
+#     value_loss_metric(value_loss)
+#     reward_loss_metric(reward_loss)
+#     policy_loss_metric(policy_loss)
 
-    total_loss_metric(loss)
+#     total_loss_metric(loss)
     

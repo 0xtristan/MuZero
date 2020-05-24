@@ -40,5 +40,7 @@ class Muzero(object):
 #         best_network = self.storage.latest_network()
 
     def simulate(self):
-        latest_network_ray = self.storage.latest_network.remote()
-        play_game(self.config, ray.get(latest_network_ray), render=True)
+        network = Network_FC(config) if config.model_type == "fc" else Network_CNN(config)
+        network_weights = ray.get(storage.latest_weights.remote())
+        network.set_weights(network_weights)
+        play_game(self.config, network, render=True)

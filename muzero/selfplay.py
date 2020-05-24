@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 
 from .config import MuZeroConfig
 from .storage import SharedStorage, ReplayBuffer
-from .models import Network
+from .models import Network, Network_FC, Network_CNN
 from .env import Game
 from .mcts_numpy import Node, expand_node, run_mcts, add_exploration_noise, select_action
 
@@ -21,19 +21,14 @@ from .mcts_numpy import Node, expand_node, run_mcts, add_exploration_noise, sele
 @ray.remote
 def run_selfplay(config: MuZeroConfig, storage: SharedStorage,
                  replay_buffer: ReplayBuffer):
-    # tf.summary.trace_on()
     for i in tqdm(range(config.selfplay_iterations), desc='Self-play iter'):
-        latest_network_ray = storage.latest_network.remote()
-        network_weights = ray.get(latest_network_ray) # serial/blocking call
-#         network = storage.latest_network()
         network = Network_FC(config) if config.model_type == "fc" else Network_CNN(config)
-        network
+        network_weights = ray.get(storage.latest_weights.remote()) # serial/blocking call
+        network.set_weights(network_weights)
+        #         network = storage.latest_network()
 
         game = play_game(config, network, render=i%100==0)
-#         print(game.root_values)
         replay_buffer.save_game.remote(game) # should we use ray.put() here??
-        # tf.summary.trace_export("Selfplay", step=i, profiler_outdir='logs')
-    # tf.summary.trace_off()
 
     
 ### Run 1 Game/Trajectory ###
