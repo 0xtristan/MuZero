@@ -40,7 +40,7 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
 
     for i in range(config.training_steps): #tqdm(range(config.training_steps), desc='Training iter'):
         if i % config.checkpoint_interval == 0:
-            storage.save_network(i, network)
+            storage.save_network(i, network.get_weights())
         ray_id = replay_buffer.sample_batch.remote(config.num_unroll_steps, config.td_steps)
         batch = ray.get(ray_id)
         train_step(optimizer, network, batch, config.weight_decay)
@@ -55,7 +55,7 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
             reward_loss_metric.reset_states()
             policy_loss_metric.reset_states()
             total_loss_metric.reset_states()
-    storage.save_network(config.training_steps, network)
+    storage.save_network.remote(config.training_steps, network)
 
 
 def scale_gradient(tensor, scale):
@@ -177,6 +177,7 @@ def test_network(config: MuZeroConfig, storage: SharedStorage,
 def test_step(config:MuZeroConfig, network: Network, batch):
     """
     Not finished
+    This should test 
     We should have 2 functions: one to plot a batch trajectory, another to run inference on a brand new/unseen game in realtime
     """
     observations, actions, target_values, target_rewards, target_policies, masks = batch
@@ -205,7 +206,13 @@ def test_step(config:MuZeroConfig, network: Network, batch):
             # All following steps
             value, reward, policy_logits, hidden_state = network.recurrent_inference(hidden_state, actions[:,k])
             gradient_scale = 1.0 / K
-
+            
+        # Select action greedily
+        greedy_action = np.argmax(polic_logits)
+        
+        # Step in the environment
+        o, r, done, _ = env.step(a)
+            
         hidden_state = scale_gradient(hidden_state, 0.5)
 
         # Targets
@@ -223,6 +230,10 @@ def test_step(config:MuZeroConfig, network: Network, batch):
         policy_losses.append(policy_loss)
         total_losses.append(loss)
         total_rewards.append(reward.numpy())
+        
+        if done:
+            print("Episode finished after {} timesteps".format(t+1))
+            break
 
     # Metric logging for tensorboard
     value_loss_metric(value_loss)

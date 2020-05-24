@@ -32,6 +32,9 @@ class Network(ABC):
         # Returns the weights of this network.
         self.steps += 1 # probably not ideal
         return [self.f.parameters(), self.g.parameters(), self.h.parameters()]
+    
+    def load_latest_weights(self):
+        self.f.load_weights()
 
     def training_steps(self) -> int:
         # How many steps / batches the network has been trained for.

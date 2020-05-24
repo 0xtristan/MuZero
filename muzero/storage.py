@@ -78,8 +78,10 @@ class ReplayBuffer(object):
     
     def get_buffer_size(self):
         return len(self.buffer)
-    
-# @ray.remote  
+
+# Needs to be rewritten so it passes weights only
+# Ray can't serialise tensorflow models
+@ray.remote  
 class SharedStorage(object):
 
     def __init__(self, config):

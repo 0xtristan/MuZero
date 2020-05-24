@@ -31,6 +31,7 @@ class Environment(object):
         return float(reward)
     
     def terminal(self):
+        self.gym_env.close()
         return self.done
     
     def legal_actions(self):
