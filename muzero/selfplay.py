@@ -6,7 +6,7 @@ import pdb
 import time
 
 import matplotlib
-matplotlib.use("MacOSX")
+#matplotlib.use("MacOSX")
 from matplotlib import pyplot as plt
 
 from .config import MuZeroConfig
@@ -28,7 +28,9 @@ def run_selfplay(config: MuZeroConfig, storage: SharedStorage,
         #         network = storage.latest_network()
 
         game = play_game(config, network, render=i%100==0)
+        game.prepare_to_save()
         replay_buffer.save_game.remote(game) # should we use ray.put() here??
+
 
     
 ### Run 1 Game/Trajectory ###
@@ -56,6 +58,8 @@ def play_game(config: MuZeroConfig, network: Network, render=False) -> Game:
         game.store_search_statistics(root)
         
         if render:
-            game.env.gym_env.render(mode='rgb_array')
-            time.sleep(.1)
+            game.env.gym_env.render(mode='human')
+            #time.sleep(.1)
+
+
     return game

@@ -54,7 +54,7 @@ class Network_FC(Network):
         super().__init__()
         # Initialise a uniform network - should I init these networks explicitly?
         n_acts = config.action_space_size
-        self.f = PredNet_FC((h_size,), n_acts)
+        self.f = PredNet_FC((h_size,), n_acts, h_size)
         self.g = DynaNet_FC((h_size+1,), h_size)
         self.h = ReprNet_FC((s_in,), h_size)
         self.steps = 0
@@ -91,19 +91,24 @@ class Network_FC(Network):
 
 def ReprNet_FC(input_shape, h_size):
     o = Input(shape=input_shape)
-    s = Dense(h_size, activation='tanh')(o) # Since we have +ve and -ve positions, angles, velocities
+    x = Dense(h_size, activation='relu')(o)
+    s = Dense(h_size, activation='tanh')(x) # Since we have +ve and -ve positions, angles, velocities
     return Model(o, s)
 
 def DynaNet_FC(input_shape, h_size):
     s = Input(shape=input_shape)
-    s_new = Dense(h_size)(s)
-    r = Dense(1, activation='sigmoid')(s_new) # rewards are 1 for each frame it stays upright, 0 otherwise
+    x = Dense(h_size, activation='relu')(s)
+    x = Dense(h_size, activation='relu')(x)
+    s_new = Dense(h_size)(x)
+    r = Dense(1, activation='sigmoid')(x) # rewards are 1 for each frame it stays upright, 0 otherwise
     return Model(s, [s_new, r])
 
-def PredNet_FC(input_shape, num_actions):
+def PredNet_FC(input_shape, num_actions, h_size):
     s = Input(shape=input_shape)
-    a = Dense(num_actions)(s) # policy should be logits
-    v = Dense(1)(s) # This can be a large number
+    x = Dense(h_size, activation='relu')(s)
+    x = Dense(h_size, activation='relu')(x)
+    a = Dense(num_actions)(x) # policy should be logits
+    v = Dense(1)(x) # This can be a large number
     return Model(s, [a, v])
     
         

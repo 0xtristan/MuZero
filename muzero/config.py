@@ -10,6 +10,7 @@ class MuZeroConfig(object):
                 selfplay_iterations: int,
                 max_moves: int,
                 discount: float,
+                use_TD_values: bool,
                 dirichlet_alpha: float,
                 num_simulations: int,
                 batch_size: int,
@@ -17,6 +18,7 @@ class MuZeroConfig(object):
                 num_actors: int,
                 lr_init: float,
                 lr_decay_steps: float,
+                checkpoint_interval: int,
                 visit_softmax_temperature_fn,
                 known_bounds: Optional[KnownBounds] = None,
                 num_train_gpus = 0):
@@ -34,6 +36,7 @@ class MuZeroConfig(object):
         self.max_moves = max_moves
         self.num_simulations = num_simulations
         self.discount = discount
+        self.use_TD_values = use_TD_values
 
         # Root prior exploration noise.
         self.root_dirichlet_alpha = dirichlet_alpha
@@ -65,6 +68,8 @@ class MuZeroConfig(object):
         self.lr_init = lr_init
         self.lr_decay_rate = 0.1
         self.lr_decay_steps = lr_decay_steps
-        
+
+        # Saving
+        self.checkpoint_interval = checkpoint_interval
         # Training devices
         self.num_train_gpus = num_train_gpus

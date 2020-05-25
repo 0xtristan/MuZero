@@ -25,7 +25,7 @@ reward_loss_metric = tf.keras.metrics.Mean()
 policy_loss_metric = tf.keras.metrics.Mean()
 total_loss_metric = tf.keras.metrics.Mean()
 
-# @ray.remote
+@ray.remote
 def train_network(config: MuZeroConfig, storage: SharedStorage,
                                     replay_buffer: ReplayBuffer):
     while ray.get(replay_buffer.get_buffer_size.remote()) < 1:
