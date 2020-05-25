@@ -138,9 +138,9 @@ def train_step(optimizer: Optimizer, network: Network, batch,
             # Targets
             z, u, pi, mask = target_values[:,k], target_rewards[:,k], target_policies[:,k], masks[:,k]
             
-            value_loss = scalar_loss(value, z, mask)
-            reward_loss = scalar_loss(reward, u, mask)
-            policy_loss = scalar_loss(policy_logits, pi, mask) #tf.linalg.matmul(pi, policy_logits, transpose_a=True, transpose_b=False)
+            value_loss = mse_loss(value, z, mask)
+            reward_loss = mse_loss(reward, u, mask)
+            policy_loss = cce_loss(policy_logits, pi, mask) #tf.linalg.matmul(pi, policy_logits, transpose_a=True, transpose_b=False)
             combined_loss = value_loss + reward_loss + policy_loss
 
             loss += scale_gradient(combined_loss, gradient_scale)
@@ -171,9 +171,13 @@ def train_step(optimizer: Optimizer, network: Network, batch,
 
 # Use categorical/softmax cross-entropy loss rather than binary/logistic
 # Value and reward are non-logits, actions are logits
-def scalar_loss(y_pred, y_true, mask) -> float:
-    # MSE in board games, cross entropy between categorical values in Atari.
+def mse_loss(y_pred, y_true, mask) -> float:
+    # MSE in board games, cross entropy between categorical values in Atari. 
     return tf.reduce_mean(tf.math.squared_difference(y_pred, y_true)*mask, axis=[0,1])
+
+def cce_loss(y_pred, y_true, mask) -> float:
+    # MSE in board games, cross entropy between categorical values in Atari. 
+    return tf.reduce_sum(-y_true*tf.nn.log_softmax(y_pred, axis=None)*mask, axis=[0,1])
 
 
 # def test_network(config: MuZeroConfig, storage: SharedStorage,
