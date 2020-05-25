@@ -28,7 +28,7 @@ policy_loss_metric = tf.keras.metrics.Mean()
 weight_reg_loss_metric = tf.keras.metrics.Mean()
 total_loss_metric = tf.keras.metrics.Mean()
 
-# @ray.remote
+@ray.remote
 def train_network(config: MuZeroConfig, storage: SharedStorage,
                                     replay_buffer: ReplayBuffer):
     while ray.get(replay_buffer.get_buffer_size.remote()) < 1:
@@ -45,17 +45,19 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
     progbar = tf.keras.utils.Progbar(config.training_steps, verbose=1, stateful_metrics=None, unit_name='step')
 
     for i in range(config.training_steps): #tqdm(range(config.training_steps), desc='Training iter'):
+
         if i % config.checkpoint_interval == 0:
             storage.save_weights.remote(i, network.get_weights())
         ray_id = replay_buffer.sample_batch.remote(config.num_unroll_steps, config.td_steps)
         batch = ray.get(ray_id)
-        train_step(optimizer, network, batch, config.weight_decay)
-        progbar.update(i, values=[('Value loss', value_loss_metric.result()),
-                                  ('Reward loss', reward_loss_metric.result()),
-                                  ('Policy loss', policy_loss_metric.result()),
-                                  ('Weight Reg loss', weight_reg_loss_metric.result()),
-                                  ('Total loss', total_loss_metric.result()),
+        vl, rl, pl, wrl, tl = train_step(optimizer, network, batch, config.weight_decay)
+        progbar.update(i, values=[('Value loss', vl),
+                                  ('Reward loss', rl),
+                                  ('Policy loss', pl),
+                                  ('Weight Reg loss', wrl),
+                                  ('Total loss', tl),
                                  ])
+
         if i%10==0:
             value_loss_metric.reset_states()
             reward_loss_metric.reset_states()
@@ -167,6 +169,7 @@ def train_step(optimizer: Optimizer, network: Network, batch,
     optimizer.apply_gradients(zip(f_grad, network.f.trainable_variables))
     optimizer.apply_gradients(zip(g_grad, network.g.trainable_variables))
     optimizer.apply_gradients(zip(h_grad, network.h.trainable_variables))
+    return value_loss, reward_loss, policy_loss, weight_reg_loss, loss
 
 
 # Use categorical/softmax cross-entropy loss rather than binary/logistic
