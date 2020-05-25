@@ -3,7 +3,7 @@ from tensorflow.keras.layers import Conv2D, BatchNormalization, Dense, Add, ReLU
 from tensorflow.keras.models import Model
 from typing import NamedTuple, List
 from abc import ABC, abstractmethod
-
+import ray
 
 class NetworkOutput(NamedTuple):
     value: float
@@ -17,26 +17,36 @@ class Network(ABC):
     def __init__(self):
         # Initialise a uniform network - should I init these networks explicitly?
         super().__init__()
+        self.f = None
+        self.g = None
+        self.h = None
         self.steps = 0
-        pass
     
     @abstractmethod
     def initial_inference(self, obs) -> NetworkOutput:
-        pass
+        raise NotImplementedError
     
     @abstractmethod
     def recurrent_inference(self, state, action) -> NetworkOutput:
-        pass
+        raise NotImplementedError
 
     def get_weights(self):
+        """Retrieves weight tensors
+        Todo: In future come up with a good way to save load from disk - probs just model.save_weights() """
         # Returns the weights of this network.
         self.steps += 1 # probably not ideal
-        return [self.f.parameters(), self.g.parameters(), self.h.parameters()]
+        return (self.f.get_weights(), self.g.get_weights(), self.h.get_weights())
+   
+    # Todo: potentially include remote weight setting here - would mean networks would need access to storage worker
+    def set_weights(self, weights):
+        f_w, g_w, h_w = weights
+        self.f.set_weights(f_w)
+        self.g.set_weights(g_w)
+        self.h.set_weights(h_w)
 
     def training_steps(self) -> int:
         # How many steps / batches the network has been trained for.
         return self.steps
-
     
     
 class Network_FC(Network):
@@ -44,7 +54,7 @@ class Network_FC(Network):
         super().__init__()
         # Initialise a uniform network - should I init these networks explicitly?
         n_acts = config.action_space_size
-        self.f = PredNet_FC((h_size,), n_acts)
+        self.f = PredNet_FC((h_size,), n_acts, h_size)
         self.g = DynaNet_FC((h_size+1,), h_size)
         self.h = ReprNet_FC((s_in,), h_size)
         self.steps = 0
@@ -55,7 +65,7 @@ class Network_FC(Network):
     # Should action_logits/policy be stored as np.array or tf.Tensor?
     def initial_inference(self, obs) -> NetworkOutput:
         # representation + prediction function
-        # input: 32x80x80 observation
+        # input: 32x80x80 observation # TODO-No?
         state = self.h(obs)
         policy_logits, value = self.f(state)
         return NetworkOutput(value, tf.zeros_like(value), policy_logits, state) # drop batch dim with [0], state still has batch
@@ -69,34 +79,36 @@ class Network_FC(Network):
         policy_logits, value = self.f(next_state)
         return NetworkOutput(value, reward, policy_logits, next_state)
 
-    def get_weights(self):
-        """Retrieves weight tensors
-        Todo: In future come up with a good way to save load from disk - probs just model.save_weights() """
-        # Returns the weights of this network.
-        self.steps += 1 # probably not ideal
-        return [self.f.get_weights(), self.g.get_weights(), self.h.get_weights()]
+#     def get_weights(self):
+#         """Retrieves weight tensors
+#         Todo: In future come up with a good way to save load from disk - probs just model.save_weights() """
+#         # Returns the weights of this network.
+#         self.steps += 1 # probably not ideal
+#         return [self.f.get_weights(), self.g.get_weights(), self.h.get_weights()]
 
-    def training_steps(self) -> int:
-        # How many steps / batches the network has been trained for.
-        return self.steps
     
 ### FC Tensorflow model definitions ###
 
 def ReprNet_FC(input_shape, h_size):
     o = Input(shape=input_shape)
-    s = Dense(h_size, activation='tanh')(o) # Since we have +ve and -ve positions, angles, velocities
+    x = Dense(h_size, activation='relu')(o)
+    s = Dense(h_size, activation='tanh')(x) # Since we have +ve and -ve positions, angles, velocities
     return Model(o, s)
 
 def DynaNet_FC(input_shape, h_size):
     s = Input(shape=input_shape)
-    s_new = Dense(h_size)(s)
-    r = Dense(1, activation='sigmoid')(s_new) # rewards are 1 for each frame it stays upright, 0 otherwise
+    x = Dense(h_size, activation='relu')(s)
+    x = Dense(h_size, activation='relu')(x)
+    s_new = Dense(h_size)(x)
+    r = Dense(1, activation='sigmoid')(x) # rewards are 1 for each frame it stays upright, 0 otherwise
     return Model(s, [s_new, r])
 
-def PredNet_FC(input_shape, num_actions):
+def PredNet_FC(input_shape, num_actions, h_size):
     s = Input(shape=input_shape)
-    a = Dense(num_actions)(s) # policy should be logits
-    v = Dense(1)(s) # This can be a large number
+    x = Dense(h_size, activation='relu')(s)
+    x = Dense(h_size, activation='relu')(x)
+    a = Dense(num_actions)(x) # policy should be logits
+    v = Dense(1)(x) # This can be a large number
     return Model(s, [a, v])
     
         
@@ -130,15 +142,6 @@ class Network_CNN(Network):
         policy_logits, value = self.f(next_state)
         policy = policy_logits[0]
         return NetworkOutput(float(value[0]), reward[0], policy.numpy(), next_state)
-
-    def get_weights(self):
-        # Returns the weights of this network.
-        self.steps += 1 # probably not ideal
-        return [self.f.parameters(), self.g.parameters(), self.h.parameters()]
-
-    def training_steps(self) -> int:
-        # How many steps / batches the network has been trained for.
-        return self.steps
         
     
 ### CNN Tensorflow model definitions ###

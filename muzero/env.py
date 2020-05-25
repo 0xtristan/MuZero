@@ -4,6 +4,7 @@ import cv2
 import tensorflow as tf
 import numpy as np
 import pdb
+from scipy.signal import lfilter
 
 from .mcts_numpy import Node, ActionHistory
 from .config import MuZeroConfig
@@ -31,6 +32,8 @@ class Environment(object):
         return float(reward)
     
     def terminal(self):
+        if self.done:
+            self.gym_env.close()
         return self.done
     
     def legal_actions(self):
@@ -58,7 +61,18 @@ class Game(object):
         self.action_space_size = config.action_space_size
         self.gamma = config.discount
         self.config = config
-    
+
+    def prepare_to_save(self):
+        # Clean up for saving, no need to save the env object - sims can be expensive.
+        self.env.gym_env.close()
+        self.env.gym_env = None
+        # And I'm now about to do ground truth values, and try overtrain them
+        self.ground_truth_values = discount_cumsum(self.rewards, self.gamma)
+        # note this is a little weird in 'stay alive' style games, as the value decreases as the game goes on
+        # in goal completion style (-1 until 0 when goal completed, value increases as you get closer to achieving the goal).
+
+
+
     def terminal(self) -> bool:
         return self.env.terminal()
     
@@ -111,6 +125,7 @@ class Game(object):
     # into the future, plus the discounted sum of all rewards until then.
     # Todo: We can swap this for more PPO style version later
     def compute_target_value(self, current_index:int, td:int):
+
         bootstrap_index = current_index + td 
         # If our TD lookahead is still before the end of the game, the update with that 
         # future game state value estimate ν_{t+N}
@@ -141,6 +156,7 @@ class Game(object):
         # K + 1 iterations
         for current_index in range(t, t + K + 1):
             ## Value Target z_{t+K} ##
+
             value = self.compute_target_value(current_index, td)
                 
             ## Reward u_{t+K} and Action π_{t+K} Targets ##
@@ -178,3 +194,19 @@ class Game(object):
     
     def action_history(self) -> ActionHistory:
         return ActionHistory(self.history, self.action_space_size)
+
+
+def discount_cumsum(x, discount):
+    """
+    magic from rllab for computing discounted cumulative sums of vectors.
+    input:
+        vector x,
+        [x0,
+         x1,
+         x2]
+    output:
+        [x0 + discount * x1 + discount^2 * x2,
+         x1 + discount * x2,
+         x2]
+    """
+    return lfilter([1], [1, float(-discount)], x[::-1], axis=0)[::-1]
