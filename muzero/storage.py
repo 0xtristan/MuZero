@@ -1,5 +1,8 @@
 import random
 import ray
+import numpy as np
+import tensorflow as tf
+import pdb
 
 from .config import MuZeroConfig
 from .env import Game
@@ -12,6 +15,7 @@ class ReplayBuffer(object):
         self.window_size = config.window_size
         self.batch_size = config.batch_size
         self.buffer = []
+        self.config = config
 
     def save_game(self, game):
         # Pop off oldest replays to make space for new ones
@@ -27,11 +31,39 @@ class ReplayBuffer(object):
         Outputs
             (observation, next K actions, target tuple)
         """
+        observations = []
+        actions = []
+        target_values = []
+        target_rewards = []
+        target_policies = []
+        masks = []
+        
+        # Sample a batch size worth of games
         games = [self.sample_game() for _ in range(self.batch_size)]
         game_pos = [(g, self.sample_position(g)) for g in games]
-        return [(g.make_image(i), g.history[i:i + K],
-                 g.make_target(i, K, td))
-                for (g, i) in game_pos]
+        
+        for g, i in game_pos:
+            observations.append(g.make_image(i))
+            # Use -1 padding for actions, this should get masked anyway
+            action_history = g.history[i:i + K]
+            action_history_padded = np.pad(action_history, (1, K-len(action_history)), 
+                                           constant_values=(-1,-1)).astype('float32')
+            actions.append(action_history_padded)
+            
+            z,u,pi,mask = g.make_target(i, K, td)
+            target_values.append(z)
+            target_rewards.append(u)
+            target_policies.append(pi)
+            masks.append(mask)
+        
+        return (
+                tf.stack(observations, axis=0),
+                tf.stack(actions, axis=0),
+                tf.cast(tf.stack(target_values, axis=0),dtype=tf.float32),
+                tf.stack(target_rewards, axis=0),
+                tf.stack(target_policies, axis=0),
+                tf.stack(masks, axis=0)
+               )
 
     def sample_game(self) -> Game:
         # TODO: figure out sampling regime
@@ -46,23 +78,27 @@ class ReplayBuffer(object):
     
     def get_buffer_size(self):
         return len(self.buffer)
-    
-# @ray.remote  
+
+# Needs to be rewritten so it passes weights only
+# Ray can't serialise tensorflow models
+@ray.remote  
 class SharedStorage(object):
 
     def __init__(self, config):
-        self._networks = {}
+        self._weights = {}
         self.config = config
 
-    def latest_network(self) -> Network:
-        if self._networks:
-            return self._networks[max(self._networks.keys())]
+    def latest_weights(self) -> Network:
+        if self._weights:
+            return self._weights[max(self._weights.keys())]
         else:
             # policy -> uniform, value -> 0, reward -> 0
             return make_uniform_network(self.config)
 
-    def save_network(self, step: int, network: Network):
-        self._networks[step] = network
+    def save_weights(self, step: int, weights):
+        self._weights[step] = weights
 
 def make_uniform_network(config: MuZeroConfig):
-    return Network_FC(config) if config.model_type == "fc" else Network_CNN(config)
+    # Todo: this is a bit shit, how can we do it better?
+    net = Network_FC(config) if config.model_type == "fc" else Network_CNN(config)
+    return net.get_weights()

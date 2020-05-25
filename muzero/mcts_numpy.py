@@ -138,12 +138,12 @@ def run_mcts(config: MuZeroConfig, root: Node, action_history: ActionHistory,
         # Predictions: f(s_k) = v_k, p_k
         # -> (v,r,p,s)
         network_output = network.recurrent_inference(parent.hidden_state,
-                                                     history.last_action())
+                                                     tf.cast(tf.expand_dims(history.last_action(),0),dtype=tf.float32)) # Needs batch dim and to be float
         # expand node using v,r,p predictions from NN
         expand_node(config, node, history.action_space(), network_output)
 
         # back up values to the root node
-        backpropagate(search_path, float(network_output.value), config.discount, 
+        backpropagate(search_path, float(network_output.value[0]), config.discount, 
                       min_max_stats)
 
         
@@ -184,7 +184,7 @@ def expand_node(config: MuZeroConfig, node: Node, actions: List[int], network_ou
     # Update leaf with predictions from parent
     node.is_expanded = True
     node.hidden_state = network_output.hidden_state # s
-    node.reward = network_output.reward # r
+    node.reward = np.squeeze(network_output.reward) # r
     # This can be optimised
 #     policy = [tf.math.exp(network_output.policy_logits[a]) for a in actions] # unnormalised probabilities
 #     policy_sum = tf.reduce_sum(policy) 
