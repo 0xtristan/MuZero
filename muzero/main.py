@@ -38,3 +38,5 @@ class Muzero(object):
 #         self.launch_job(train_worker, self.config, self.storage, replay_buffer_worker)
         self.launch_job_serial(train_network, self.config, self.storage, replay_buffer_worker)
 #         best_network = self.storage.latest_network()
+
+

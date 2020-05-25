@@ -49,4 +49,6 @@ def play_game(config: MuZeroConfig, network: Network) -> Game:
         action = select_action(config, len(game.history), root, network)
         game.apply(action)
         game.store_search_statistics(root)
+
+    print(game)
     return game

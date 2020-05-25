@@ -55,7 +55,7 @@ class Network_FC(Network):
     # Should action_logits/policy be stored as np.array or tf.Tensor?
     def initial_inference(self, obs) -> NetworkOutput:
         # representation + prediction function
-        # input: 32x80x80 observation
+        # input: 32x80x80 observation # TODO-No?
         state = self.h(obs)
         policy_logits, value = self.f(state)
         policy = policy_logits[0]
