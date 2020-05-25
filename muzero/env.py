@@ -78,6 +78,7 @@ class Game(object):
         reward = self.env.step(action)
         self.rewards.append(reward)
         self.history.append(action)
+        return reward
         
     def store_search_statistics(self, root: Node):
         """Stores the MCTS search value of node and search policy (visits ratio of children)"""

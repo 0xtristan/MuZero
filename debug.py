@@ -32,7 +32,7 @@ def make_cartpole_config() -> MuZeroConfig:
         selfplay_iterations=1, # Todo: implement None for continuous play
         max_moves=27,#000,  # Half an hour at action repeat 4.
         discount=0.997,
-        use_TD_values=False,
+        use_TD_values=True,
         dirichlet_alpha=0.25,
         num_simulations=50,
         batch_size=10,#24,#1024,

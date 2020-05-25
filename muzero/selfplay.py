@@ -41,6 +41,7 @@ def run_selfplay(config: MuZeroConfig, storage: SharedStorage,
 def play_game(config: MuZeroConfig, network: Network, render=False) -> Game:
     game = Game(config)
 
+    total_reward = 0
     while not game.terminal() and len(game.history) < config.max_moves:
         # At the root of the search tree we use the representation function h to
         # obtain a hidden state given the current observation.
@@ -54,12 +55,14 @@ def play_game(config: MuZeroConfig, network: Network, render=False) -> Game:
         # model learned by the network.
         run_mcts(config, root, game.action_history(), network)
         action = select_action(config, len(game.history), root, network)
-        game.apply(action)
+        reward = game.apply(action)
+        total_reward += reward
         game.store_search_statistics(root)
         
         if render:
             game.env.gym_env.render(mode='human')
             #time.sleep(.1)
-
+    if render:
+        print(f"Game Reward: {total_reward}")
 
     return game
