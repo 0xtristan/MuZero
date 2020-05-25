@@ -32,6 +32,7 @@ def make_cartpole_config() -> MuZeroConfig:
         selfplay_iterations=1, # Todo: implement None for continuous play
         max_moves=27,#000,  # Half an hour at action repeat 4.
         discount=0.997,
+        use_TD_values=False,
         dirichlet_alpha=0.25,
         num_simulations=50,
         batch_size=10,#24,#1024,
@@ -39,6 +40,7 @@ def make_cartpole_config() -> MuZeroConfig:
         num_actors=1,#350,
         lr_init=0.05,
         lr_decay_steps=350e3,
+        checkpoint_interval=100,
         visit_softmax_temperature_fn=visit_softmax_temperature,
         num_train_gpus=gpu_count)
 

@@ -18,7 +18,7 @@ class MuZeroConfig(object):
                 num_actors: int,
                 lr_init: float,
                 lr_decay_steps: float,
-                checkpoint_interval: int,
+                checkpoint_interval: float,
                 visit_softmax_temperature_fn,
                 known_bounds: Optional[KnownBounds] = None,
                 num_train_gpus = 0):
@@ -55,8 +55,8 @@ class MuZeroConfig(object):
         ### Training
         self.selfplay_iterations = selfplay_iterations ##
         self.training_steps = int(1000e3)
-        self.checkpoint_interval = int(1e2) #1e3
-        self.window_size = int(1e6)
+        self.checkpoint_interval = int(checkpoint_interval) #1e3
+        self.window_size = int(1e4)
         self.batch_size = batch_size
         self.num_unroll_steps = 5
         self.td_steps = td_steps

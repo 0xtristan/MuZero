@@ -36,8 +36,7 @@ class Muzero(object):
         for _ in range(self.config.num_actors):
 
             self.launch_job(run_selfplay, self.config, self.storage, self.replay_buffer)
-#         self.launch_job(train_worker, self.config, self.storage, replay_buffer_worker)
-        #self.launch_job(train_network, self.config, self.storage, self.replay_buffer)
+        self.launch_job_serial(train_network, self.config, self.storage, self.replay_buffer)
 #         best_network = self.storage.latest_network()
 
     def simulate(self):

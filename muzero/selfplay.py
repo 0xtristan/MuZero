@@ -27,7 +27,7 @@ def run_selfplay(config: MuZeroConfig, storage: SharedStorage,
         network.set_weights(network_weights)
         #         network = storage.latest_network()
 
-        game = play_game(config, network, render=i%100==0)
+        game = play_game(config, network)
         game.prepare_to_save()
         replay_buffer.save_game.remote(game) # should we use ray.put() here??
 

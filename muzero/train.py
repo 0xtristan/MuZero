@@ -13,6 +13,7 @@ from IPython import display
 from .config import MuZeroConfig
 from .storage import SharedStorage, ReplayBuffer
 from .models import Network, Network_CNN, Network_FC
+from .selfplay import play_game
 
 # LOSSES
 cce_loss = tf.keras.losses.CategoricalCrossentropy(from_logits=False)
@@ -23,9 +24,10 @@ mse = tf.keras.losses.MeanSquaredError()
 value_loss_metric = tf.keras.metrics.Mean()
 reward_loss_metric = tf.keras.metrics.Mean()
 policy_loss_metric = tf.keras.metrics.Mean()
+weight_reg_loss_metric = tf.keras.metrics.Mean()
 total_loss_metric = tf.keras.metrics.Mean()
 
-@ray.remote
+# @ray.remote
 def train_network(config: MuZeroConfig, storage: SharedStorage,
                                     replay_buffer: ReplayBuffer):
     while ray.get(replay_buffer.get_buffer_size.remote()) < 1:
@@ -50,13 +52,18 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
         progbar.update(i, values=[('Value loss', value_loss_metric.result()),
                                   ('Reward loss', reward_loss_metric.result()),
                                   ('Policy loss', policy_loss_metric.result()),
+                                  ('Weight Reg loss', weight_reg_loss_metric.result()),
                                   ('Total loss', total_loss_metric.result()),
                                  ])
         if i%10==0:
             value_loss_metric.reset_states()
             reward_loss_metric.reset_states()
             policy_loss_metric.reset_states()
+            weight_reg_loss_metric.reset_states()
             total_loss_metric.reset_states()
+            
+        if i%100==0:
+            play_game(config, network, render=True)
     storage.save_weights.remote(config.training_steps, network.get_weights())
 
 
@@ -146,8 +153,11 @@ def train_step(optimizer: Optimizer, network: Network, batch,
 #         total_reward()
         
         # Todo: Eventually we want to use keras layer regularization or AdamW
+        weight_reg_loss = 0
         for weights in network.get_weights():
-            loss += weight_decay * tf.add_n([tf.nn.l2_loss(w) for w in weights]) # sum of l2 norm of weight matrices - also consider tf.norm
+            weight_reg_loss += weight_decay * tf.add_n([tf.nn.l2_loss(w) for w in weights]) # sum of l2 norm of weight matrices - also consider tf.norm
+        weight_reg_loss_metric(weight_reg_loss)
+        loss += weight_reg_loss
     
     # Is there a cleaner way to implement this?
     f_grad = f_tape.gradient(loss, network.f.trainable_variables)

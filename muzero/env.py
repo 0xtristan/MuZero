@@ -31,11 +31,6 @@ class Environment(object):
         self.obs_history.append(obs)
         return float(reward)
     
-    def terminal(self):
-        if self.done:
-            self.gym_env.close()
-        return self.done
-    
     def legal_actions(self):
         """Env specific rules for legality of moves
         TODO: if at wall don't allow movement into the wall"""
@@ -71,10 +66,10 @@ class Game(object):
         # note this is a little weird in 'stay alive' style games, as the value decreases as the game goes on
         # in goal completion style (-1 until 0 when goal completed, value increases as you get closer to achieving the goal).
 
-
-
     def terminal(self) -> bool:
-        return self.env.terminal()
+        if self.env.done:
+            self.env.gym_env.close()
+        return self.env.done
     
     def legal_actions(self) -> List[int]:
         return self.env.legal_actions()

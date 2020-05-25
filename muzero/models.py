@@ -78,28 +78,20 @@ class Network_FC(Network):
         next_state, reward =  self.g(state_action)
         policy_logits, value = self.f(next_state)
         return NetworkOutput(value, reward, policy_logits, next_state)
-
-#     def get_weights(self):
-#         """Retrieves weight tensors
-#         Todo: In future come up with a good way to save load from disk - probs just model.save_weights() """
-#         # Returns the weights of this network.
-#         self.steps += 1 # probably not ideal
-#         return [self.f.get_weights(), self.g.get_weights(), self.h.get_weights()]
-
     
 ### FC Tensorflow model definitions ###
 
 def ReprNet_FC(input_shape, h_size):
     o = Input(shape=input_shape)
     x = Dense(h_size, activation='relu')(o)
-    s = Dense(h_size, activation='tanh')(x) # Since we have +ve and -ve positions, angles, velocities
+    s = Dense(h_size, activation='sigmoid')(x) # Since we have +ve and -ve positions, angles, velocities
     return Model(o, s)
 
 def DynaNet_FC(input_shape, h_size):
     s = Input(shape=input_shape)
     x = Dense(h_size, activation='relu')(s)
     x = Dense(h_size, activation='relu')(x)
-    s_new = Dense(h_size)(x)
+    s_new = Dense(h_size, activation='sigmoid')(x)
     r = Dense(1, activation='sigmoid')(x) # rewards are 1 for each frame it stays upright, 0 otherwise
     return Model(s, [s_new, r])
 
