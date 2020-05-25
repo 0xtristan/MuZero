@@ -9,6 +9,7 @@ from tqdm import tqdm
 import time
 import matplotlib.pyplot as plt
 from IPython import display
+import pdb
 
 from .config import MuZeroConfig
 from .storage import SharedStorage, ReplayBuffer
@@ -137,9 +138,9 @@ def train_step(optimizer: Optimizer, network: Network, batch,
             # Targets
             z, u, pi, mask = target_values[:,k], target_rewards[:,k], target_policies[:,k], masks[:,k]
             
-            value_loss = mse(value, z)
-            reward_loss = mse(reward, u)
-            policy_loss = mse(policy_logits, pi) #tf.linalg.matmul(pi, policy_logits, transpose_a=True, transpose_b=False)
+            value_loss = scalar_loss(value, z, mask)
+            reward_loss = scalar_loss(reward, u, mask)
+            policy_loss = scalar_loss(policy_logits, pi, mask) #tf.linalg.matmul(pi, policy_logits, transpose_a=True, transpose_b=False)
             combined_loss = value_loss + reward_loss + policy_loss
 
             loss += scale_gradient(combined_loss, gradient_scale)
@@ -170,9 +171,9 @@ def train_step(optimizer: Optimizer, network: Network, batch,
 
 # Use categorical/softmax cross-entropy loss rather than binary/logistic
 # Value and reward are non-logits, actions are logits
-def scalar_loss(prediction, target) -> float:
+def scalar_loss(y_pred, y_true, mask) -> float:
     # MSE in board games, cross entropy between categorical values in Atari.
-    return cce_loss(prediction, target)
+    return tf.reduce_mean(tf.math.squared_difference(y_pred, y_true)*mask, axis=[0,1])
 
 
 # def test_network(config: MuZeroConfig, storage: SharedStorage,

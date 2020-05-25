@@ -59,10 +59,10 @@ class ReplayBuffer(object):
         return (
                 tf.stack(observations, axis=0),
                 tf.stack(actions, axis=0),
-                tf.cast(tf.stack(target_values, axis=0),dtype=tf.float32),
-                tf.stack(target_rewards, axis=0),
+                tf.expand_dims(tf.cast(tf.stack(target_values, axis=0),dtype=tf.float32),axis=-1),
+                tf.expand_dims(tf.stack(target_rewards, axis=0),axis=-1),
                 tf.stack(target_policies, axis=0),
-                tf.stack(masks, axis=0)
+                tf.expand_dims(tf.cast(tf.stack(masks, axis=0),dtype=tf.float32),axis=-1)
                )
 
     def sample_game(self) -> Game:
