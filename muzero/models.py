@@ -54,7 +54,7 @@ class Network_FC(Network):
         super().__init__()
         # Initialise a uniform network - should I init these networks explicitly?
         n_acts = config.action_space_size
-        self.f = PredNet_FC((h_size,), n_acts, h_size)
+        self.f = PredNet_FC((h_size,), n_acts, h_size, config.value_support_size)
         self.g = DynaNet_FC((h_size+1,), h_size)
         self.h = ReprNet_FC((s_in,), h_size)
         self.steps = 0
@@ -95,13 +95,30 @@ def DynaNet_FC(input_shape, h_size):
     r = Dense(1, activation='sigmoid')(x) # rewards are 1 for each frame it stays upright, 0 otherwise
     return Model(s, [s_new, r])
 
-def PredNet_FC(input_shape, num_actions, h_size):
+def PredNet_FC(input_shape, num_actions, h_size, support_size):
     s = Input(shape=input_shape)
     x = Dense(h_size, activation='relu')(s)
     x = Dense(h_size, activation='relu')(x)
     a = Dense(num_actions)(x) # policy should be logits
-    v = Dense(1)(x) # This can be a large number
+    v = Dense(support_size*2+1)(x) # This can be a large number
+    v = support_to_scalar(v, support_size*2+1)
     return Model(s, [a, v])
+
+def support_to_scalar(logits, support_size):
+    """
+    Transform a categorical representation to a scalar
+    See paper appendix Network Architecture
+    """
+    # Decode to a scalar
+    probabilities = tf.nn.softmax(logits, axis=1)
+    support = tf.expand_dims(tf.range(-support_size, support_size + 1), axis=0)
+    support = tf.tile(support, [logits.shape[0], 1])  # make batchsize supports
+    x = tf.cast(support, tf.float32) * probabilities
+    x = tf.reduce_sum(x, axis=-1)
+    x = tf.math.sign(x) * (tf.math.sqrt(tf.math.abs(x) + 1) - 1 + 0.001 * x)  # the transform
+    x = tf.expand_dims(x, 1)
+    return x
+
     
         
 class Network_CNN(Network):
