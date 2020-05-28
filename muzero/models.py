@@ -113,10 +113,12 @@ def support_to_scalar(logits, support_size):
     probabilities = tf.nn.softmax(logits, axis=1)
     support = tf.expand_dims(tf.range(-support_size, support_size + 1), axis=0)
     support = tf.tile(support, [logits.shape[0], 1])  # make batchsize supports
+    # Expectation under softmax
     x = tf.cast(support, tf.float32) * probabilities
     x = tf.reduce_sum(x, axis=-1)
-#     x = tf.math.sign(x) * (tf.math.sqrt(tf.math.abs(x) + 1) - 1 + 0.001 * x)  # the transform
-    x = tf.math.sign(x) * (tf.math.sqrt(tf.math.abs(x) + 1) - 1 + 0.001 * x)  # the transform
+    # Inverse transform h^-1(x) from Lemma A.2.
+    # From "Observe and Look Further: Achieving Consistent Performance on Atari" - Pohlen et al.
+    x = tf.math.sign(x) * (((tf.math.sqrt(1+4*eps*(tf.math.abs(x)+1+eps))-1)/(2*eps))^2-1)
     x = tf.expand_dims(x, 1)
     return x
 
