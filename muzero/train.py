@@ -22,11 +22,11 @@ cce_loss_logits = tf.keras.losses.CategoricalCrossentropy(from_logits=True)
 mse = tf.keras.losses.MeanSquaredError()
 
 # METRICS
-value_loss_metric = tf.keras.metrics.Mean()
-reward_loss_metric = tf.keras.metrics.Mean()
-policy_loss_metric = tf.keras.metrics.Mean()
-weight_reg_loss_metric = tf.keras.metrics.Mean()
-total_loss_metric = tf.keras.metrics.Mean()
+# value_loss_metric = tf.keras.metrics.Mean()
+# reward_loss_metric = tf.keras.metrics.Mean()
+# policy_loss_metric = tf.keras.metrics.Mean()
+# weight_reg_loss_metric = tf.keras.metrics.Mean()
+# total_loss_metric = tf.keras.metrics.Mean()
 
 #@ray.remote
 def train_network(config: MuZeroConfig, storage: SharedStorage,
@@ -58,12 +58,12 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
                                   ('Total loss', tl),
                                  ])
 
-        if i%10==0:
-            value_loss_metric.reset_states()
-            reward_loss_metric.reset_states()
-            policy_loss_metric.reset_states()
-            weight_reg_loss_metric.reset_states()
-            total_loss_metric.reset_states()
+#         if i%10==0:
+#             value_loss_metric.reset_states()
+#             reward_loss_metric.reset_states()
+#             policy_loss_metric.reset_states()
+#             weight_reg_loss_metric.reset_states()
+#             total_loss_metric.reset_states()
             
         if i%100==0:
             play_game(config, network, render=True)
@@ -121,6 +121,12 @@ def train_step(optimizer: Optimizer, network: Network, batch,
     Policy Targets (N,K+1,A)
     Masks (N,K+1)
     """
+    value_loss_metric = tf.keras.metrics.Mean()
+    reward_loss_metric = tf.keras.metrics.Mean()
+    policy_loss_metric = tf.keras.metrics.Mean()
+#     weight_reg_loss_metric = tf.keras.metrics.Mean()
+#     total_loss_metric = tf.keras.metrics.Mean()
+
     observations, actions, target_values, target_rewards, target_policies, masks = batch
     with tf.GradientTape() as f_tape, tf.GradientTape() as g_tape, tf.GradientTape() as h_tape:
         loss = 0
@@ -141,9 +147,10 @@ def train_step(optimizer: Optimizer, network: Network, batch,
             z, u, pi, mask = target_values[:,k], target_rewards[:,k], target_policies[:,k], masks[:,k]
             
             value_loss = cce_loss(value, scalar_to_support(z, network.value_support_size), mask)
-            reward_loss = mse_loss(reward, u, mask)
+            reward_loss = cce_loss(reward, scalar_to_support(u, network.value_support_size), mask)
             policy_loss = cce_loss(policy_logits, pi, mask) #tf.linalg.matmul(pi, policy_logits, transpose_a=True, transpose_b=False)
             combined_loss = value_loss + reward_loss + policy_loss
+#             pdb.set_trace()
 
             loss += scale_gradient(combined_loss, gradient_scale)
             
@@ -152,14 +159,14 @@ def train_step(optimizer: Optimizer, network: Network, batch,
             reward_loss_metric(reward_loss)
             policy_loss_metric(policy_loss)
         
-        total_loss_metric(loss)
+#         total_loss_metric(loss)
 #         total_reward()
         
         # Todo: Eventually we want to use keras layer regularization or AdamW
         weight_reg_loss = 0
         for weights in network.get_weights():
             weight_reg_loss += weight_decay * tf.add_n([tf.nn.l2_loss(w) for w in weights]) # sum of l2 norm of weight matrices - also consider tf.norm
-        weight_reg_loss_metric(weight_reg_loss)
+#         weight_reg_loss_metric(weight_reg_loss)
         loss += weight_reg_loss
     
     # Is there a cleaner way to implement this?
@@ -169,7 +176,8 @@ def train_step(optimizer: Optimizer, network: Network, batch,
     optimizer.apply_gradients(zip(f_grad, network.f.trainable_variables))
     optimizer.apply_gradients(zip(g_grad, network.g.trainable_variables))
     optimizer.apply_gradients(zip(h_grad, network.h.trainable_variables))
-    return value_loss, reward_loss, policy_loss, weight_reg_loss, loss
+    # We ought to average or sum these losses - otherwise reward loss is 0 at the end lol
+    return value_loss_metric.result(), reward_loss_metric.result(), policy_loss_metric.result(), weight_reg_loss, loss
 
 
 # Use categorical/softmax cross-entropy loss rather than binary/logistic
@@ -181,6 +189,7 @@ def mse_loss(y_pred, y_true, mask) -> float:
 def cce_loss(y_pred, y_true, mask) -> float:
     # MSE in board games, cross entropy between categorical values in Atari. 
     return tf.reduce_sum(-y_true*tf.nn.log_softmax(y_pred, axis=None)*mask, axis=[0,1])
+#     return tf.reduce_sum(-y_true*tf.math.log(y_pred)*mask, axis=[0,1])
 
 
 # def test_network(config: MuZeroConfig, storage: SharedStorage,

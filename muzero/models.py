@@ -56,7 +56,7 @@ class Network_FC(Network):
         n_acts = config.action_space_size
         self.value_support_size = config.value_support_size
         self.f = PredNet_FC((h_size,), n_acts, h_size, self.value_support_size)
-        self.g = DynaNet_FC((h_size+1,), h_size)
+        self.g = DynaNet_FC((h_size+1,), h_size, self.value_support_size)
         self.h = ReprNet_FC((s_in,), h_size)
         self.steps = 0
 
@@ -69,9 +69,11 @@ class Network_FC(Network):
         # input: 32x80x80 observation # TODO-No?
         state = self.h(obs)
         policy_logits, value = self.f(state)
+        reward = tf.zeros_like(value)
         if convert_to_scalar:
             value = support_to_scalar(value, self.value_support_size)
-        return NetworkOutput(value, tf.zeros_like(value), policy_logits, state) # drop batch dim with [0], state still has batch
+            reward = support_to_scalar(reward, self.value_support_size)
+        return NetworkOutput(value, reward, policy_logits, state) # drop batch dim with [0], state still has batch
     
     def recurrent_inference(self, state, action, convert_to_scalar = True) -> NetworkOutput:
         # dynamics + prediction function
@@ -82,6 +84,7 @@ class Network_FC(Network):
         policy_logits, value = self.f(next_state)
         if convert_to_scalar:
             value = support_to_scalar(value, self.value_support_size)
+            reward = support_to_scalar(reward, self.value_support_size)
         return NetworkOutput(value, reward, policy_logits, next_state)
     
 ### FC Tensorflow model definitions ###
@@ -92,12 +95,12 @@ def ReprNet_FC(input_shape, h_size):
     s = Dense(h_size, activation='sigmoid')(x) # Since we have +ve and -ve positions, angles, velocities
     return Model(o, s)
 
-def DynaNet_FC(input_shape, h_size):
+def DynaNet_FC(input_shape, h_size, support_size):
     s = Input(shape=input_shape)
     x = Dense(h_size, activation='relu')(s)
     x = Dense(h_size, activation='relu')(x)
     s_new = Dense(h_size, activation='sigmoid')(x)
-    r = Dense(1, activation='sigmoid')(x) # rewards are 1 for each frame it stays upright, 0 otherwise
+    r = Dense(support_size*2+1)(x) # rewards are 1 for each frame it stays upright, 0 otherwise
     return Model(s, [s_new, r])
 
 def PredNet_FC(input_shape, num_actions, h_size, support_size):
@@ -108,7 +111,7 @@ def PredNet_FC(input_shape, num_actions, h_size, support_size):
     v = Dense(support_size*2+1)(x) # This can be a large number
     return Model(s, [a, v])
 
-def support_to_scalar(logits, support_size):
+def support_to_scalar(logits, support_size, eps = 0.001):
     """
     Transform a categorical representation to a scalar
     See paper appendix Network Architecture
@@ -122,7 +125,6 @@ def support_to_scalar(logits, support_size):
     x = tf.reduce_sum(x, axis=-1)
     # Inverse transform h^-1(x) from Lemma A.2.
     # From "Observe and Look Further: Achieving Consistent Performance on Atari" - Pohlen et al.
-    eps = 0.001
     x = tf.math.sign(x) * (((tf.math.sqrt(1.+4.*eps*(tf.math.abs(x)+1+eps))-1)/(2*eps))**2-1)
     x = tf.expand_dims(x, 1)
     return x
