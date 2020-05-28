@@ -115,10 +115,34 @@ def support_to_scalar(logits, support_size):
     support = tf.tile(support, [logits.shape[0], 1])  # make batchsize supports
     x = tf.cast(support, tf.float32) * probabilities
     x = tf.reduce_sum(x, axis=-1)
+#     x = tf.math.sign(x) * (tf.math.sqrt(tf.math.abs(x) + 1) - 1 + 0.001 * x)  # the transform
     x = tf.math.sign(x) * (tf.math.sqrt(tf.math.abs(x) + 1) - 1 + 0.001 * x)  # the transform
     x = tf.expand_dims(x, 1)
     return x
 
+def scalar_to_support(x, support_size):
+    """
+    Transform a scalar to a categorical representation with (2 * support_size + 1) categories
+    See paper appendix Network Architecture
+    """
+    # Reduce the scale (defined in https://arxiv.org/abs/1805.11593)
+    x = tf.math.sign(x) * (tf.math.sqrt(tf.math.abs(x) + 1) - 1) + 0.001 * x
+
+    # Encode on a vector
+    # input (N,1)
+    x = tf.clip_by_value(x, -support_size, support_size) # 50.3
+    floor = tf.math.floor(x) # 50
+    prob_upper = x - floor # 0.3
+    prob_lower = 1 - prob_upper # 0.7
+    # Needs to become (N,601)
+    dim1_indices = tf.cast(tf.math.floor(x)+support_size, tf.int32)
+    dim0_indices = tf.expand_dims(tf.range(0,x.shape[0]), axis=1) # this is just 0,1,2,3
+    indices = tf.concat([dim0_indices, dim1_indices], axis=1)
+
+    supports = tf.scatter_nd(indices, tf.squeeze(prob_lower), shape=(x.shape[0],2*support_size+1))
+    indices = tf.concat([dim0_indices, tf.clip_by_value(dim1_indices+1,0,2*support_size)], axis=1)
+    tf.tensor_scatter_nd_add(supports, indices, tf.squeeze(prob_upper))
+    return supports
     
         
 class Network_CNN(Network):
