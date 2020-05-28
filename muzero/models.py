@@ -54,7 +54,8 @@ class Network_FC(Network):
         super().__init__()
         # Initialise a uniform network - should I init these networks explicitly?
         n_acts = config.action_space_size
-        self.f = PredNet_FC((h_size,), n_acts, h_size, config.value_support_size)
+        self.value_support_size = config.value_support_size
+        self.f = PredNet_FC((h_size,), n_acts, h_size, self.value_support_size)
         self.g = DynaNet_FC((h_size+1,), h_size)
         self.h = ReprNet_FC((s_in,), h_size)
         self.steps = 0
@@ -63,20 +64,24 @@ class Network_FC(Network):
     # state should be Tensor because it is re-used in recurrent_inference()
     # Should the value,reward scalars be stored as floats?
     # Should action_logits/policy be stored as np.array or tf.Tensor?
-    def initial_inference(self, obs) -> NetworkOutput:
+    def initial_inference(self, obs, convert_to_scalar = True) -> NetworkOutput:
         # representation + prediction function
         # input: 32x80x80 observation # TODO-No?
         state = self.h(obs)
         policy_logits, value = self.f(state)
+        if convert_to_scalar:
+            value = support_to_scalar(value, self.value_support_size)
         return NetworkOutput(value, tf.zeros_like(value), policy_logits, state) # drop batch dim with [0], state still has batch
     
-    def recurrent_inference(self, state, action) -> NetworkOutput:
+    def recurrent_inference(self, state, action, convert_to_scalar = True) -> NetworkOutput:
         # dynamics + prediction function
         # Input: hidden state nfx5x5
         # Concat/pad action to channel dim of states
         state_action = tf.concat([state,tf.expand_dims(action,axis=-1)], axis=-1)
         next_state, reward =  self.g(state_action)
         policy_logits, value = self.f(next_state)
+        if convert_to_scalar:
+            value = support_to_scalar(value, self.value_support_size)
         return NetworkOutput(value, reward, policy_logits, next_state)
     
 ### FC Tensorflow model definitions ###
@@ -101,7 +106,6 @@ def PredNet_FC(input_shape, num_actions, h_size, support_size):
     x = Dense(h_size, activation='relu')(x)
     a = Dense(num_actions)(x) # policy should be logits
     v = Dense(support_size*2+1)(x) # This can be a large number
-    v = support_to_scalar(v, support_size*2+1)
     return Model(s, [a, v])
 
 def support_to_scalar(logits, support_size):
@@ -118,7 +122,8 @@ def support_to_scalar(logits, support_size):
     x = tf.reduce_sum(x, axis=-1)
     # Inverse transform h^-1(x) from Lemma A.2.
     # From "Observe and Look Further: Achieving Consistent Performance on Atari" - Pohlen et al.
-    x = tf.math.sign(x) * (((tf.math.sqrt(1+4*eps*(tf.math.abs(x)+1+eps))-1)/(2*eps))^2-1)
+    eps = 0.001
+    x = tf.math.sign(x) * (((tf.math.sqrt(1.+4.*eps*(tf.math.abs(x)+1+eps))-1)/(2*eps))**2-1)
     x = tf.expand_dims(x, 1)
     return x
 
@@ -139,11 +144,11 @@ def scalar_to_support(x, support_size):
     # Needs to become (N,601)
     dim1_indices = tf.cast(tf.math.floor(x)+support_size, tf.int32)
     dim0_indices = tf.expand_dims(tf.range(0,x.shape[0]), axis=1) # this is just 0,1,2,3
-    indices = tf.concat([dim0_indices, dim1_indices], axis=1)
+    lower_indices = tf.concat([dim0_indices, dim1_indices], axis=1)
 
-    supports = tf.scatter_nd(indices, tf.squeeze(prob_lower), shape=(x.shape[0],2*support_size+1))
-    indices = tf.concat([dim0_indices, tf.clip_by_value(dim1_indices+1,0,2*support_size)], axis=1)
-    tf.tensor_scatter_nd_add(supports, indices, tf.squeeze(prob_upper))
+    supports = tf.scatter_nd(lower_indices, tf.squeeze(prob_lower), shape=(x.shape[0],2*support_size+1))
+    higher_indices = tf.concat([dim0_indices, tf.clip_by_value(dim1_indices+1,0,2*support_size)], axis=1)
+    supports = tf.tensor_scatter_nd_add(supports, higher_indices, tf.squeeze(prob_upper))
     return supports
     
         

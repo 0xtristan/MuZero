@@ -13,7 +13,7 @@ import pdb
 
 from .config import MuZeroConfig
 from .storage import SharedStorage, ReplayBuffer
-from .models import Network, Network_CNN, Network_FC
+from .models import Network, Network_CNN, Network_FC, scalar_to_support
 from .selfplay import play_game
 
 # LOSSES
@@ -128,11 +128,11 @@ def train_step(optimizer: Optimizer, network: Network, batch,
         for k in range(K):
             if k==0:
                 # Initial step, from the real observation.
-                value, reward, policy_logits, hidden_state = network.initial_inference(observations)
+                value, reward, policy_logits, hidden_state = network.initial_inference(observations, convert_to_scalar=False)
                 gradient_scale = 1.0
             else:
                 # All following steps
-                value, reward, policy_logits, hidden_state = network.recurrent_inference(hidden_state, actions[:,k])
+                value, reward, policy_logits, hidden_state = network.recurrent_inference(hidden_state, actions[:,k], convert_to_scalar = False)
                 gradient_scale = 1.0 / K
 
             hidden_state = scale_gradient(hidden_state, 0.5)
@@ -140,7 +140,7 @@ def train_step(optimizer: Optimizer, network: Network, batch,
             # Targets
             z, u, pi, mask = target_values[:,k], target_rewards[:,k], target_policies[:,k], masks[:,k]
             
-            value_loss = mse_loss(value, z, mask)
+            value_loss = cce_loss(value, scalar_to_support(z, network.value_support_size), mask)
             reward_loss = mse_loss(reward, u, mask)
             policy_loss = cce_loss(policy_logits, pi, mask) #tf.linalg.matmul(pi, policy_logits, transpose_a=True, transpose_b=False)
             combined_loss = value_loss + reward_loss + policy_loss

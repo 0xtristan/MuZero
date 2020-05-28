@@ -18,7 +18,7 @@ from .mcts_numpy import Node, expand_node, run_mcts, add_exploration_noise, sele
 # Each self-play job is independent of all others; it takes the latest network
 # snapshot, produces a game and makes it available to the training job by
 # writing it to a shared replay buffer.
-#@ray.remote
+@ray.remote
 def run_selfplay(config: MuZeroConfig, storage: SharedStorage,
                  replay_buffer: ReplayBuffer):
     for i in tqdm(range(config.selfplay_iterations), desc='Self-play iter'):
