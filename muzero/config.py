@@ -56,8 +56,8 @@ class MuZeroConfig(object):
         self.known_bounds = known_bounds
 
         ### Training
-        self.selfplay_iterations = selfplay_iterations ##
-        self.training_steps = int(1000e3)
+        self.selfplay_iterations = int(selfplay_iterations) ##
+        self.training_steps = int(1e6)
         self.checkpoint_interval = int(checkpoint_interval) #1e3
         self.window_size = int(1e4)
         self.batch_size = batch_size

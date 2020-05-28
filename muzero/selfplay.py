@@ -27,7 +27,7 @@ def run_selfplay(config: MuZeroConfig, storage: SharedStorage,
         network.set_weights(network_weights)
         #         network = storage.latest_network()
 
-        game = play_game(config, network)
+        game,_ = play_game(config, network)
         game.prepare_to_save()
         replay_buffer.save_game.remote(game) # should we use ray.put() here??
 
@@ -65,4 +65,4 @@ def play_game(config: MuZeroConfig, network: Network, render=False) -> Game:
     if render:
         print(f"Game Reward: {total_reward}")
 
-    return game
+    return game, total_reward

@@ -1,5 +1,5 @@
 import tensorflow as tf
-from tensorflow.keras.layers import Conv2D, BatchNormalization, Dense, Add, ReLU, Input, Flatten
+from tensorflow.keras.layers import Conv2D, BatchNormalization, Dense, Add, ReLU, Input, Flatten, LeakyReLU
 from tensorflow.keras.models import Model
 from typing import NamedTuple, List
 from abc import ABC, abstractmethod
@@ -91,22 +91,27 @@ class Network_FC(Network):
 
 def ReprNet_FC(input_shape, h_size):
     o = Input(shape=input_shape)
-    x = Dense(h_size, activation='relu')(o)
+    x = Dense(h_size)(o)
+    x = LeakyReLU()(x)
     s = Dense(h_size, activation='sigmoid')(x) # Since we have +ve and -ve positions, angles, velocities
     return Model(o, s)
 
 def DynaNet_FC(input_shape, h_size, support_size):
     s = Input(shape=input_shape)
-    x = Dense(h_size, activation='relu')(s)
-    x = Dense(h_size, activation='relu')(x)
+    x = Dense(h_size)(s)
+    x = LeakyReLU()(x)
+    x = Dense(h_size)(x)
+    x = LeakyReLU()(x)
     s_new = Dense(h_size, activation='sigmoid')(x)
     r = Dense(support_size*2+1)(x) # rewards are 1 for each frame it stays upright, 0 otherwise
     return Model(s, [s_new, r])
 
 def PredNet_FC(input_shape, num_actions, h_size, support_size):
     s = Input(shape=input_shape)
-    x = Dense(h_size, activation='relu')(s)
-    x = Dense(h_size, activation='relu')(x)
+    x = Dense(h_size)(s)
+    x = LeakyReLU()(x)
+    x = Dense(h_size)(x)
+    x = LeakyReLU()(x)
     a = Dense(num_actions)(x) # policy should be logits
     v = Dense(support_size*2+1)(x) # This can be a large number
     return Model(s, [a, v])

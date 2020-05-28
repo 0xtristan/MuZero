@@ -7,6 +7,7 @@ from tensorflow.compat.v1.train import get_global_step
 import ray
 from tqdm import tqdm
 import time
+import datetime
 import matplotlib.pyplot as plt
 from IPython import display
 import pdb
@@ -16,17 +17,6 @@ from .storage import SharedStorage, ReplayBuffer
 from .models import Network, Network_CNN, Network_FC, scalar_to_support
 from .selfplay import play_game
 
-# LOSSES
-cce_loss = tf.keras.losses.CategoricalCrossentropy(from_logits=False)
-cce_loss_logits = tf.keras.losses.CategoricalCrossentropy(from_logits=True)
-mse = tf.keras.losses.MeanSquaredError()
-
-# METRICS
-# value_loss_metric = tf.keras.metrics.Mean()
-# reward_loss_metric = tf.keras.metrics.Mean()
-# policy_loss_metric = tf.keras.metrics.Mean()
-# weight_reg_loss_metric = tf.keras.metrics.Mean()
-# total_loss_metric = tf.keras.metrics.Mean()
 
 #@ray.remote
 def train_network(config: MuZeroConfig, storage: SharedStorage,
@@ -38,11 +28,13 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
 #     network_weights = ray.get(storage.latest_weights.remote())
 #     network.set_weights(network_weights)
     
-    learning_rate = config.lr_init * config.lr_decay_rate**(
-#           get_global_step() / config.lr_decay_steps)
-            1)
+    learning_rate = config.lr_init * config.lr_decay_rate**(0)#get_global_step() / config.lr_decay_steps)
     optimizer = Adam(learning_rate, config.momentum)  
     progbar = tf.keras.utils.Progbar(config.training_steps, verbose=1, stateful_metrics=None, unit_name='step')
+    
+    current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    train_log_dir = 'logs/gradient_tape/' + current_time + '/train'
+    train_summary_writer = tf.summary.create_file_writer(train_log_dir)
 
     for i in range(config.training_steps): #tqdm(range(config.training_steps), desc='Training iter'):
 
@@ -57,16 +49,18 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
                                   ('Weight Reg loss', wrl),
                                   ('Total loss', tl),
                                  ])
-
-#         if i%10==0:
-#             value_loss_metric.reset_states()
-#             reward_loss_metric.reset_states()
-#             policy_loss_metric.reset_states()
-#             weight_reg_loss_metric.reset_states()
-#             total_loss_metric.reset_states()
-            
         if i%100==0:
-            play_game(config, network, render=True)
+            _,total_reward = play_game(config, network, render=True)
+            
+        with train_summary_writer.as_default():
+            tf.summary.scalar('Value loss', vl, step=i)
+            tf.summary.scalar('Reward loss', rl, step=i)
+            tf.summary.scalar('Policy loss', pl, step=i)
+            tf.summary.scalar('Weight Reg loss', wrl, step=i)
+            tf.summary.scalar('Total loss', tl, step=i)
+            if i%100==0:
+                tf.summary.scalar('Reward', total_reward, step=i)
+
     storage.save_weights.remote(config.training_steps, network.get_weights())
 
 
@@ -191,83 +185,3 @@ def cce_loss(y_pred, y_true, mask) -> float:
     return tf.reduce_sum(-y_true*tf.nn.log_softmax(y_pred, axis=None)*mask, axis=[0,1])
 #     return tf.reduce_sum(-y_true*tf.math.log(y_pred)*mask, axis=[0,1])
 
-
-# def test_network(config: MuZeroConfig, storage: SharedStorage,
-#                                     replay_buffer: ReplayBuffer):
-#     while ray.get(replay_buffer.get_buffer_size.remote()) < 1:
-#         time.sleep(1)
-#     network = storage.latest_network()    
-    
-#     for i in range(1):
-#         ray_id = replay_buffer.sample_batch.remote(50, config.td_steps)
-#         batch = ray.get(ray_id)
-#         test_step(config, network, batch)
-        
-# def test_step(config:MuZeroConfig, network: Network, batch):
-#     """
-#     Not finished
-#     This should test 
-#     We should have 2 functions: one to plot a batch trajectory, another to run inference on a brand new/unseen game in realtime
-#     """
-#     observations, actions, target_values, target_rewards, target_policies, masks = batch
-#     loss = 0
-#     value_losses = []
-#     reward_losses = []
-#     policy_losses = []
-#     total_losses =  []
-#     total_rewards = []
-              
-#     K = actions.shape[1] # seqlen
-         
-#     env = gym.make(config.gym_env_name)
-#     o = env.reset()
-#     render = plt.imshow(env.render(mode='rgb_array'))
-#     for k in range(K):
-#         render.set_data(env.render(mode='rgb_array')) # just update the data
-#         display.display(plt.gcf())
-#         display.clear_output(wait=True)
-        
-#         if k==0:
-#             # Initial step, from the real observation.
-#             value, reward, policy_logits, hidden_state = network.initial_inference(observations)
-#             gradient_scale = 1.0
-#         else:
-#             # All following steps
-#             value, reward, policy_logits, hidden_state = network.recurrent_inference(hidden_state, actions[:,k])
-#             gradient_scale = 1.0 / K
-            
-#         # Select action greedily
-#         greedy_action = np.argmax(polic_logits)
-        
-#         # Step in the environment
-#         o, r, done, _ = env.step(a)
-            
-#         hidden_state = scale_gradient(hidden_state, 0.5)
-
-#         # Targets
-#         z, u, pi, mask = target_values[:,k], target_rewards[:,k], target_policies[:,k], masks[:,k]
-
-#         value_loss = mse(value, z)
-#         reward_loss = mse(reward, u)
-#         policy_loss = mse(policy_logits, pi) 
-#         combined_loss = value_loss + reward_loss + policy_loss
-
-#         loss += scale_gradient(combined_loss, gradient_scale)
-        
-#         value_losses.append(value_loss)
-#         reward_losses.append(reward_loss)
-#         policy_losses.append(policy_loss)
-#         total_losses.append(loss)
-#         total_rewards.append(reward.numpy())
-        
-#         if done:
-#             print("Episode finished after {} timesteps".format(t+1))
-#             break
-
-#     # Metric logging for tensorboard
-#     value_loss_metric(value_loss)
-#     reward_loss_metric(reward_loss)
-#     policy_loss_metric(policy_loss)
-
-#     total_loss_metric(loss)
-    
