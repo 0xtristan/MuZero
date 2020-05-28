@@ -42,7 +42,7 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
             storage.save_weights.remote(i, network.get_weights())
         ray_id = replay_buffer.sample_batch.remote(config.num_unroll_steps, config.td_steps)
         batch = ray.get(ray_id)
-        vl, rl, pl, wrl, tl = train_step(optimizer, network, batch, config.weight_decay)
+        vl, rl, pl, wrl, tl, fg, gg, hg = train_step(optimizer, network, batch, config.weight_decay)
         progbar.update(i, values=[('Value loss', vl),
                                   ('Reward loss', rl),
                                   ('Policy loss', pl),
@@ -58,6 +58,12 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
             tf.summary.scalar('Policy loss', pl, step=i)
             tf.summary.scalar('Weight Reg loss', wrl, step=i)
             tf.summary.scalar('Total loss', tl, step=i)
+            tf.summary.histogram("F first layer gradients", fg[0], step=i, buckets=None)
+            tf.summary.histogram("G first layer gradients", gg[0], step=i, buckets=None)
+            tf.summary.histogram("H first layer gradients", hg[0], step=i, buckets=None)
+            tf.summary.histogram("F final layer gradients", fg[-1], step=i, buckets=None)
+            tf.summary.histogram("G final layer gradients", gg[-1], step=i, buckets=None)
+            tf.summary.histogram("H final layer gradients", hg[-1], step=i, buckets=None)
             if i%100==0:
                 tf.summary.scalar('Reward', total_reward, step=i)
 
@@ -171,7 +177,7 @@ def train_step(optimizer: Optimizer, network: Network, batch,
     optimizer.apply_gradients(zip(g_grad, network.g.trainable_variables))
     optimizer.apply_gradients(zip(h_grad, network.h.trainable_variables))
     # We ought to average or sum these losses - otherwise reward loss is 0 at the end lol
-    return value_loss_metric.result(), reward_loss_metric.result(), policy_loss_metric.result(), weight_reg_loss, loss
+    return value_loss_metric.result(), reward_loss_metric.result(), policy_loss_metric.result(), weight_reg_loss, loss, f_grad, g_grad, h_grad
 
 
 # Use categorical/softmax cross-entropy loss rather than binary/logistic
