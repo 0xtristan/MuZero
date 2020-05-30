@@ -231,7 +231,7 @@ def select_action(config: MuZeroConfig, num_moves: int, node: Node,
 def softmax_sample(distribution, T: float):
     counts = distribution
     actions = range(len(counts))
-    softmax_probs = softmax(counts/T)
+    softmax_probs = softmax(counts/T) # tf.nn.softmax(counts/T, axis=None)
     sampled_action = np.random.choice(actions, size=1, p=softmax_probs)[0]
     return sampled_action
 

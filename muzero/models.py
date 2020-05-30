@@ -1,5 +1,6 @@
 import tensorflow as tf
 from tensorflow.keras.layers import Conv2D, BatchNormalization, Dense, Add, ReLU, Input, Flatten, LeakyReLU
+from tensorflow.keras.activations import sigmoid
 from tensorflow.keras.models import Model
 from typing import NamedTuple, List
 from abc import ABC, abstractmethod
@@ -56,6 +57,8 @@ class Network_FC(Network):
         n_acts = config.action_space_size
         self.value_support_size = config.value_support_size
         self.f = PredNet_FC((h_size,), n_acts, h_size, self.value_support_size)
+#         self.fv = PredNetV_FC((h_size,), n_acts, h_size, self.value_support_size)
+#         self.fa = PredNetA_FC((h_size,), n_acts, h_size)
         self.g = DynaNet_FC((h_size+1,), h_size, self.value_support_size)
         self.h = ReprNet_FC((s_in,), h_size)
         self.steps = 0
@@ -69,6 +72,8 @@ class Network_FC(Network):
         # input: 32x80x80 observation # TODO-No?
         state = self.h(obs)
         policy_logits, value = self.f(state)
+#         value = self.fv(state)
+#         policy_logits = self.fa(state)
         reward = tf.zeros_like(value)
         if convert_to_scalar:
             value = support_to_scalar(value, self.value_support_size)
@@ -82,6 +87,8 @@ class Network_FC(Network):
         state_action = tf.concat([state,tf.expand_dims(action,axis=-1)], axis=-1)
         next_state, reward =  self.g(state_action)
         policy_logits, value = self.f(next_state)
+#         value = self.fv(next_state)
+#         policy_logits = self.fa(next_state)
         if convert_to_scalar:
             value = support_to_scalar(value, self.value_support_size)
             reward = support_to_scalar(reward, self.value_support_size)
@@ -102,8 +109,11 @@ def DynaNet_FC(input_shape, h_size, support_size):
     x = LeakyReLU()(x)
     x = Dense(h_size)(x)
     x = LeakyReLU()(x)
-    s_new = Dense(h_size, activation='sigmoid')(x)
+    
+    s_new = Dense(h_size)(x)
+    r = LeakyReLU()(s_new)
     r = Dense(support_size*2+1)(x) # rewards are 1 for each frame it stays upright, 0 otherwise
+    s_new = sigmoid(s_new)
     return Model(s, [s_new, r])
 
 def PredNet_FC(input_shape, num_actions, h_size, support_size):
@@ -112,9 +122,34 @@ def PredNet_FC(input_shape, num_actions, h_size, support_size):
     x = LeakyReLU()(x)
     x = Dense(h_size)(x)
     x = LeakyReLU()(x)
+
+#     a = Dense(h_size)(x)
+#     a = LeakyReLU()(a)
+    
+#     v = Dense(h_size)(x)
+#     v = LeakyReLU()(v)
+    
     a = Dense(num_actions)(x) # policy should be logits
     v = Dense(support_size*2+1)(x) # This can be a large number
     return Model(s, [a, v])
+
+# def PredNetV_FC(input_shape, num_actions, h_size, support_size):
+#     s = Input(shape=input_shape)
+#     x = Dense(h_size)(s)
+#     x = LeakyReLU()(x)
+# #     x = Dense(h_size)(x)
+# #     x = LeakyReLU()(x)
+#     v = Dense(support_size*2+1)(x) # This can be a large number
+#     return Model(s, v)
+
+# def PredNetA_FC(input_shape, num_actions, h_size):
+#     s = Input(shape=input_shape)
+#     x = Dense(h_size)(s)
+#     x = LeakyReLU()(x)
+# #     x = Dense(h_size)(x)
+# #     x = LeakyReLU()(x)
+#     a = Dense(num_actions)(x) # policy should be logits
+#     return Model(s, a)
 
 def support_to_scalar(logits, support_size, eps = 0.001):
     """
