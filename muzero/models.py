@@ -112,7 +112,7 @@ def DynaNet_FC(input_shape, h_size, support_size):
     
     s_new = Dense(h_size)(x)
     r = LeakyReLU()(s_new)
-    r = Dense(support_size*2+1)(x) # rewards are 1 for each frame it stays upright, 0 otherwise
+    r = Dense(support_size*2+1)(r) # rewards are 1 for each frame it stays upright, 0 otherwise
     s_new = sigmoid(s_new)
     return Model(s, [s_new, r])
 
