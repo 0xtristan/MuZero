@@ -29,7 +29,8 @@ def make_cartpole_config() -> MuZeroConfig:
     return MuZeroConfig(
         gym_env_name='CartPole-v0',
         action_space_size=2,
-        selfplay_iterations=1, # Todo: implement None for continuous play
+        value_support_size=40,
+        selfplay_iterations=100, # Todo: implement None for continuous play
         max_moves=27,#000,  # Half an hour at action repeat 4.
         discount=0.997,
         use_TD_values=True,
@@ -50,3 +51,5 @@ config = make_cartpole_config()
 mz = Muzero(config)
 
 mz.run()
+
+# I reckon we currently only have support on value, as signoided should really work well for r in 0-1 regimes.

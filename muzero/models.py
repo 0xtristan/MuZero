@@ -1,5 +1,6 @@
 import tensorflow as tf
-from tensorflow.keras.layers import Conv2D, BatchNormalization, Dense, Add, ReLU, Input, Flatten
+from tensorflow.keras.layers import Conv2D, BatchNormalization, Dense, Add, ReLU, Input, Flatten, LeakyReLU
+from tensorflow.keras.activations import sigmoid
 from tensorflow.keras.models import Model
 from typing import NamedTuple, List
 from abc import ABC, abstractmethod
@@ -54,8 +55,11 @@ class Network_FC(Network):
         super().__init__()
         # Initialise a uniform network - should I init these networks explicitly?
         n_acts = config.action_space_size
-        self.f = PredNet_FC((h_size,), n_acts, h_size)
-        self.g = DynaNet_FC((h_size+1,), h_size)
+        self.value_support_size = config.value_support_size
+        self.f = PredNet_FC((h_size,), n_acts, h_size, self.value_support_size)
+#         self.fv = PredNetV_FC((h_size,), n_acts, h_size, self.value_support_size)
+#         self.fa = PredNetA_FC((h_size,), n_acts, h_size)
+        self.g = DynaNet_FC((h_size+1,), h_size, self.value_support_size)
         self.h = ReprNet_FC((s_in,), h_size)
         self.steps = 0
 
@@ -63,45 +67,131 @@ class Network_FC(Network):
     # state should be Tensor because it is re-used in recurrent_inference()
     # Should the value,reward scalars be stored as floats?
     # Should action_logits/policy be stored as np.array or tf.Tensor?
-    def initial_inference(self, obs) -> NetworkOutput:
+    def initial_inference(self, obs, convert_to_scalar = True) -> NetworkOutput:
         # representation + prediction function
         # input: 32x80x80 observation # TODO-No?
         state = self.h(obs)
         policy_logits, value = self.f(state)
-        return NetworkOutput(value, tf.zeros_like(value), policy_logits, state) # drop batch dim with [0], state still has batch
+#         value = self.fv(state)
+#         policy_logits = self.fa(state)
+        reward = tf.zeros_like(value)
+        if convert_to_scalar:
+            value = support_to_scalar(value, self.value_support_size)
+            reward = support_to_scalar(reward, self.value_support_size)
+        return NetworkOutput(value, reward, policy_logits, state) # drop batch dim with [0], state still has batch
     
-    def recurrent_inference(self, state, action) -> NetworkOutput:
+    def recurrent_inference(self, state, action, convert_to_scalar = True) -> NetworkOutput:
         # dynamics + prediction function
         # Input: hidden state nfx5x5
         # Concat/pad action to channel dim of states
         state_action = tf.concat([state,tf.expand_dims(action,axis=-1)], axis=-1)
         next_state, reward =  self.g(state_action)
         policy_logits, value = self.f(next_state)
+#         value = self.fv(next_state)
+#         policy_logits = self.fa(next_state)
+        if convert_to_scalar:
+            value = support_to_scalar(value, self.value_support_size)
+            reward = support_to_scalar(reward, self.value_support_size)
         return NetworkOutput(value, reward, policy_logits, next_state)
     
 ### FC Tensorflow model definitions ###
 
 def ReprNet_FC(input_shape, h_size):
     o = Input(shape=input_shape)
-    x = Dense(h_size, activation='relu')(o)
+    x = Dense(h_size)(o)
+    x = LeakyReLU()(x)
     s = Dense(h_size, activation='sigmoid')(x) # Since we have +ve and -ve positions, angles, velocities
     return Model(o, s)
 
-def DynaNet_FC(input_shape, h_size):
+def DynaNet_FC(input_shape, h_size, support_size):
     s = Input(shape=input_shape)
-    x = Dense(h_size, activation='relu')(s)
-    x = Dense(h_size, activation='relu')(x)
-    s_new = Dense(h_size, activation='sigmoid')(x)
-    r = Dense(1, activation='sigmoid')(x) # rewards are 1 for each frame it stays upright, 0 otherwise
+    x = Dense(h_size)(s)
+    x = LeakyReLU()(x)
+    x = Dense(h_size)(x)
+    x = LeakyReLU()(x)
+    
+    s_new = Dense(h_size)(x)
+    r = LeakyReLU()(s_new)
+    r = Dense(support_size*2+1)(x) # rewards are 1 for each frame it stays upright, 0 otherwise
+    s_new = sigmoid(s_new)
     return Model(s, [s_new, r])
 
-def PredNet_FC(input_shape, num_actions, h_size):
+def PredNet_FC(input_shape, num_actions, h_size, support_size):
     s = Input(shape=input_shape)
-    x = Dense(h_size, activation='relu')(s)
-    x = Dense(h_size, activation='relu')(x)
+    x = Dense(h_size)(s)
+    x = LeakyReLU()(x)
+    x = Dense(h_size)(x)
+    x = LeakyReLU()(x)
+
+#     a = Dense(h_size)(x)
+#     a = LeakyReLU()(a)
+    
+#     v = Dense(h_size)(x)
+#     v = LeakyReLU()(v)
+    
     a = Dense(num_actions)(x) # policy should be logits
-    v = Dense(1)(x) # This can be a large number
+    v = Dense(support_size*2+1)(x) # This can be a large number
     return Model(s, [a, v])
+
+# def PredNetV_FC(input_shape, num_actions, h_size, support_size):
+#     s = Input(shape=input_shape)
+#     x = Dense(h_size)(s)
+#     x = LeakyReLU()(x)
+# #     x = Dense(h_size)(x)
+# #     x = LeakyReLU()(x)
+#     v = Dense(support_size*2+1)(x) # This can be a large number
+#     return Model(s, v)
+
+# def PredNetA_FC(input_shape, num_actions, h_size):
+#     s = Input(shape=input_shape)
+#     x = Dense(h_size)(s)
+#     x = LeakyReLU()(x)
+# #     x = Dense(h_size)(x)
+# #     x = LeakyReLU()(x)
+#     a = Dense(num_actions)(x) # policy should be logits
+#     return Model(s, a)
+
+def support_to_scalar(logits, support_size, eps = 0.001):
+    """
+    Transform a categorical representation to a scalar
+    See paper appendix Network Architecture
+    """
+    # Decode to a scalar
+    probabilities = tf.nn.softmax(logits, axis=1)
+    support = tf.expand_dims(tf.range(-support_size, support_size + 1), axis=0)
+    support = tf.tile(support, [logits.shape[0], 1])  # make batchsize supports
+    # Expectation under softmax
+    x = tf.cast(support, tf.float32) * probabilities
+    x = tf.reduce_sum(x, axis=-1)
+    # Inverse transform h^-1(x) from Lemma A.2.
+    # From "Observe and Look Further: Achieving Consistent Performance on Atari" - Pohlen et al.
+    x = tf.math.sign(x) * (((tf.math.sqrt(1.+4.*eps*(tf.math.abs(x)+1+eps))-1)/(2*eps))**2-1)
+    x = tf.expand_dims(x, 1)
+    return x
+
+def scalar_to_support(x, support_size):
+    """
+    Transform a scalar to a categorical representation with (2 * support_size + 1) categories
+    See paper appendix Network Architecture
+    """
+    # Reduce the scale (defined in https://arxiv.org/abs/1805.11593)
+    x = tf.math.sign(x) * (tf.math.sqrt(tf.math.abs(x) + 1) - 1) + 0.001 * x
+
+    # Encode on a vector
+    # input (N,1)
+    x = tf.clip_by_value(x, -support_size, support_size) # 50.3
+    floor = tf.math.floor(x) # 50
+    prob_upper = x - floor # 0.3
+    prob_lower = 1 - prob_upper # 0.7
+    # Needs to become (N,601)
+    dim1_indices = tf.cast(tf.math.floor(x)+support_size, tf.int32)
+    dim0_indices = tf.expand_dims(tf.range(0,x.shape[0]), axis=1) # this is just 0,1,2,3
+    lower_indices = tf.concat([dim0_indices, dim1_indices], axis=1)
+
+    supports = tf.scatter_nd(lower_indices, tf.squeeze(prob_lower), shape=(x.shape[0],2*support_size+1))
+    higher_indices = tf.concat([dim0_indices, tf.clip_by_value(dim1_indices+1,0,2*support_size)], axis=1)
+    supports = tf.tensor_scatter_nd_add(supports, higher_indices, tf.squeeze(prob_upper))
+    return supports
     
         
 class Network_CNN(Network):

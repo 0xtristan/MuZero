@@ -7,6 +7,7 @@ class MuZeroConfig(object):
     def __init__(self,
                 gym_env_name: str,
                 action_space_size: int,
+                value_support_size: int,
                 selfplay_iterations: int,
                 max_moves: int,
                 discount: float,
@@ -30,7 +31,9 @@ class MuZeroConfig(object):
         
         ### Self-Play
         self.action_space_size = action_space_size
+        self.value_support_size = value_support_size
         self.num_actors = num_actors
+
 
         self.visit_softmax_temperature_fn = visit_softmax_temperature_fn
         self.max_moves = max_moves
@@ -53,8 +56,8 @@ class MuZeroConfig(object):
         self.known_bounds = known_bounds
 
         ### Training
-        self.selfplay_iterations = selfplay_iterations ##
-        self.training_steps = int(1000e3)
+        self.selfplay_iterations = int(selfplay_iterations) ##
+        self.training_steps = int(1e6)
         self.checkpoint_interval = int(checkpoint_interval) #1e3
         self.window_size = int(1e4)
         self.batch_size = batch_size
