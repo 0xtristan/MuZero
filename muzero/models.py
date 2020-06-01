@@ -2,6 +2,7 @@ import tensorflow as tf
 from tensorflow.keras.layers import Conv2D, BatchNormalization, Dense, Add, ReLU, Input, Flatten, LeakyReLU
 from tensorflow.keras.activations import sigmoid
 from tensorflow.keras.models import Model
+from tensorflow_core.python.keras import regularizers
 from typing import NamedTuple, List
 from abc import ABC, abstractmethod
 import ray
@@ -51,22 +52,20 @@ class Network(ABC):
     
     
 class Network_FC(Network):
-    def __init__(self, config, s_in=4, h_size=16):
+    def __init__(self, config, s_in=4, h_size=64, repr_size=4):
         super().__init__()
         # Initialise a uniform network - should I init these networks explicitly?
         n_acts = config.action_space_size
         self.value_support_size = config.value_support_size
-        self.f = PredNet_FC((h_size,), n_acts, h_size, self.value_support_size)
+        self.reward_support_size = config.reward_support_size
+        self.regularizer = regularizers.l2(config.weight_decay)
+        self.f = PredNet_FC((repr_size,), n_acts, h_size, support_size=self.value_support_size, regularizer=self.regularizer)
 #         self.fv = PredNetV_FC((h_size,), n_acts, h_size, self.value_support_size)
 #         self.fa = PredNetA_FC((h_size,), n_acts, h_size)
-        self.g = DynaNet_FC((h_size+1,), h_size, self.value_support_size)
-        self.h = ReprNet_FC((s_in,), h_size)
+        self.g = DynaNet_FC((repr_size+1,), repr_size, h_size, support_size=self.reward_support_size, regularizer=self.regularizer)
+        self.h = ReprNet_FC((s_in,), repr_size, regularizer=self.regularizer)
         self.steps = 0
 
-    # TODO: Think about what dtypes we want to return/save
-    # state should be Tensor because it is re-used in recurrent_inference()
-    # Should the value,reward scalars be stored as floats?
-    # Should action_logits/policy be stored as np.array or tf.Tensor?
     def initial_inference(self, obs, convert_to_scalar = True) -> NetworkOutput:
         # representation + prediction function
         # input: 32x80x80 observation # TODO-No?
@@ -74,10 +73,10 @@ class Network_FC(Network):
         policy_logits, value = self.f(state)
 #         value = self.fv(state)
 #         policy_logits = self.fa(state)
-        reward = tf.zeros_like(value)
+        reward = tf.zeros((obs.shape[0],2*self.reward_support_size+1))
         if convert_to_scalar:
             value = support_to_scalar(value, self.value_support_size)
-            reward = support_to_scalar(reward, self.value_support_size)
+            reward = support_to_scalar(reward, self.reward_support_size)
         return NetworkOutput(value, reward, policy_logits, state) # drop batch dim with [0], state still has batch
     
     def recurrent_inference(self, state, action, convert_to_scalar = True) -> NetworkOutput:
@@ -91,46 +90,41 @@ class Network_FC(Network):
 #         policy_logits = self.fa(next_state)
         if convert_to_scalar:
             value = support_to_scalar(value, self.value_support_size)
-            reward = support_to_scalar(reward, self.value_support_size)
+            reward = support_to_scalar(reward, self.reward_support_size)
         return NetworkOutput(value, reward, policy_logits, next_state)
     
 ### FC Tensorflow model definitions ###
 
-def ReprNet_FC(input_shape, h_size):
+def ReprNet_FC(input_shape, repr_size, regularizer):
     o = Input(shape=input_shape)
-    x = Dense(h_size)(o)
-    x = LeakyReLU()(x)
-    s = Dense(h_size, activation='sigmoid')(x) # Since we have +ve and -ve positions, angles, velocities
+    x = o
+#     x = Dense(h_size, kernel_regularizer=regularizer)(x)
+#     x = LeakyReLU()(x)
+    s = Dense(repr_size, kernel_regularizer=regularizer, activation='sigmoid')(x) # Since we have +ve and -ve positions, angles, velocities
     return Model(o, s)
 
-def DynaNet_FC(input_shape, h_size, support_size):
+def DynaNet_FC(input_shape, repr_size, h_size, support_size, regularizer):
     s = Input(shape=input_shape)
-    x = Dense(h_size)(s)
+    x = s
+    x = Dense(h_size, kernel_regularizer=regularizer)(x)
     x = LeakyReLU()(x)
-    x = Dense(h_size)(x)
-    x = LeakyReLU()(x)
+#     x = Dense(h_size, kernel_regularizer=regularizer)(x)
+#     x = LeakyReLU()(x)
     
-    s_new = Dense(h_size)(x)
-    r = LeakyReLU()(s_new)
-    r = Dense(support_size*2+1)(r) # rewards are 1 for each frame it stays upright, 0 otherwise
-    s_new = sigmoid(s_new)
+    s_new = Dense(repr_size, kernel_regularizer=regularizer, activation='sigmoid')(x)
+    r = Dense(support_size*2+1, kernel_regularizer=regularizer)(x) # rewards are 1 for each frame it stays upright, 0 otherwise
     return Model(s, [s_new, r])
 
-def PredNet_FC(input_shape, num_actions, h_size, support_size):
+def PredNet_FC(input_shape, num_actions, h_size, support_size, regularizer):
     s = Input(shape=input_shape)
-    x = Dense(h_size)(s)
-    x = LeakyReLU()(x)
-    x = Dense(h_size)(x)
-    x = LeakyReLU()(x)
-
-#     a = Dense(h_size)(x)
-#     a = LeakyReLU()(a)
+    x = s
+#     x = Dense(h_size, kernel_regularizer=regularizer)(x)
+#     x = LeakyReLU()(x)
+#     x = Dense(h_size, kernel_regularizer=regularizer)(x)
+#     x = LeakyReLU()(x)
     
-#     v = Dense(h_size)(x)
-#     v = LeakyReLU()(v)
-    
-    a = Dense(num_actions)(x) # policy should be logits
-    v = Dense(support_size*2+1)(x) # This can be a large number
+    a = Dense(num_actions, kernel_regularizer=regularizer)(x) # policy should be logits
+    v = Dense(support_size*2+1, kernel_regularizer=regularizer)(x) # This can be a large number
     return Model(s, [a, v])
 
 # def PredNetV_FC(input_shape, num_actions, h_size, support_size):

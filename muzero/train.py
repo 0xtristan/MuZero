@@ -161,9 +161,9 @@ def train_step(optimizer: Optimizer, network: Network, batch,
             z, u, pi, mask = target_values[:,k], target_rewards[:,k], target_policies[:,k], masks[:,k]
             
             value_loss = ce_loss(value, scalar_to_support(z, network.value_support_size), mask)
-            reward_loss = ce_loss(reward, scalar_to_support(u, network.value_support_size), mask)
+            reward_loss = ce_loss(reward, scalar_to_support(u, network.reward_support_size), mask)
             policy_loss = ce_loss(policy_logits, pi, mask) #tf.linalg.matmul(pi, policy_logits, transpose_a=True, transpose_b=False)
-            combined_loss = 1.0*value_loss + 1.0*reward_loss + 1.0*policy_loss
+            combined_loss = 0.25*value_loss + 1.0*reward_loss + 1.0*policy_loss
 #             pdb.set_trace()
 
             loss += scale_gradient(combined_loss, gradient_scale)
@@ -174,7 +174,7 @@ def train_step(optimizer: Optimizer, network: Network, batch,
             policy_loss_metric(policy_loss)
             
             value_pred_mean(support_to_scalar(value, network.value_support_size)*mask)
-            reward_pred_mean(support_to_scalar(reward, network.value_support_size)*mask)
+            reward_pred_mean(support_to_scalar(reward, network.reward_support_size)*mask)
             policy_pred_dist.append(tf.nn.softmax(policy_logits)*mask)
             value_target_mean(z*mask)
             reward_target_mean(u*mask)
@@ -188,7 +188,7 @@ def train_step(optimizer: Optimizer, network: Network, batch,
         for weights in network.get_weights():
             weight_reg_loss += weight_decay * tf.add_n([tf.nn.l2_loss(w) for w in weights]) # sum of l2 norm of weight matrices - also consider tf.norm
 #         weight_reg_loss_metric(weight_reg_loss)
-        loss += weight_reg_loss
+#         loss += weight_reg_loss
     
     # Is there a cleaner way to implement this?
     f_grad = f_tape.gradient(loss, network.f.trainable_variables)
@@ -211,6 +211,6 @@ def ce_loss(y_pred, y_true, mask) -> float:
     # MSE in board games, cross entropy between categorical values in Atari. 
 #     return tf.reduce_mean(-y_true*tf.nn.log_softmax(y_pred, axis=None)*mask, axis=[0,1])
 #     pdb.set_trace()
-    return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(y_true, y_pred)*tf.squeeze(mask))
+    return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred)*tf.squeeze(mask))
 #     return tf.reduce_sum(-y_true*tf.math.log(y_pred)*mask, axis=[0,1])
 

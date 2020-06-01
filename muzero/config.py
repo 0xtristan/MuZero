@@ -8,6 +8,7 @@ class MuZeroConfig(object):
                 gym_env_name: str,
                 action_space_size: int,
                 value_support_size: int,
+                reward_support_size: int,
                 selfplay_iterations: int,
                 max_moves: int,
                 discount: float,
@@ -32,6 +33,7 @@ class MuZeroConfig(object):
         ### Self-Play
         self.action_space_size = action_space_size
         self.value_support_size = value_support_size
+        self.reward_support_size = reward_support_size
         self.num_actors = num_actors
 
 
