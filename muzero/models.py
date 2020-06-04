@@ -52,7 +52,7 @@ class Network(ABC):
     
     
 class Network_FC(Network):
-    def __init__(self, config, s_in=4, h_size=64, repr_size=4):
+    def __init__(self, config, s_in=4, h_size=16, repr_size=16):
         super().__init__()
         # Initialise a uniform network - should I init these networks explicitly?
         n_acts = config.action_space_size

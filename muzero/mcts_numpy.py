@@ -219,13 +219,16 @@ def add_exploration_noise(config: MuZeroConfig, node: Node):
 ### Softmax search policy $\pi$ ###
 
 def select_action(config: MuZeroConfig, num_moves: int, node: Node,
-                  network: Network) -> int:
+                  network: Network, greedy_policy=False) -> int:
     """Search policy: softmax probability over actions dictated by visited counts"""
     # Visit counts of children nodes - policy proportional to counts
-    # Get softmax temp
-    t = config.visit_softmax_temperature_fn(
-        num_moves=num_moves, training_steps=network.training_steps())
-    action = softmax_sample(node.child_visit_count, t)
+    if greedy_policy:
+        action = np.argmax(num_moves)
+    else:
+        # Get softmax temp
+        t = config.visit_softmax_temperature_fn(
+            num_moves=num_moves, training_steps=network.training_steps())
+        action = softmax_sample(node.child_visit_count, t)
     return action
 
 def softmax_sample(distribution, T: float):

@@ -42,15 +42,15 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
             storage.save_weights.remote(i, network.get_weights())
         ray_id = replay_buffer.sample_batch.remote(config.num_unroll_steps, config.td_steps)
         batch = ray.get(ray_id)
-        vl, rl, pl, wrl, tl, fg, gg, hg, v_pred, r_pred, p_pred, v_targ, r_targ, p_targ = train_step(optimizer, network, batch, config.weight_decay)
+        vl, rl, pl, wrl, tl, fg, gg, hg, v_pred, r_pred, p_pred, v_targ, r_targ, p_targ, acts = train_step(optimizer, network, batch, config.weight_decay)
         progbar.update(i, values=[('Value loss', vl),
                                   ('Reward loss', rl),
                                   ('Policy loss', pl),
                                   ('Weight Reg loss', wrl),
                                   ('Total loss', tl),
                                  ])
-        if i%20==0:
-            _,total_reward = play_game(config, network, render=False)
+        if (i+1)%20==0:
+            _,total_reward = play_game(config, network, greedy_policy=True, render=False)
             
         with train_summary_writer.as_default():
             tf.summary.scalar('1. Losses/Value loss', vl, step=i)
@@ -70,7 +70,9 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
             tf.summary.scalar('3. Targets/Value target mean', v_targ, step=i)
             tf.summary.scalar('3. Targets/Reward target mean', r_targ, step=i)
             tf.summary.histogram('3. Targets/Policy target dist', p_targ, step=i)
-            if i%20==0:
+            
+            tf.summary.histogram('Action distribution', acts, step=i)
+            if (i+1)%20==0:
                 tf.summary.scalar('Reward', total_reward, step=i)
 
     storage.save_weights.remote(config.training_steps, network.get_weights())
@@ -198,19 +200,19 @@ def train_step(optimizer: Optimizer, network: Network, batch,
     optimizer.apply_gradients(zip(g_grad, network.g.trainable_variables))
     optimizer.apply_gradients(zip(h_grad, network.h.trainable_variables))
     # We ought to average or sum these losses - otherwise reward loss is 0 at the end lol
-    return value_loss_metric.result(), reward_loss_metric.result(), policy_loss_metric.result(), weight_reg_loss, loss, f_grad, g_grad, h_grad, value_pred_mean.result(), reward_pred_mean.result(), policy_pred_dist, value_target_mean.result(), reward_target_mean.result(), policy_target_dist
+    return value_loss_metric.result(), reward_loss_metric.result(), policy_loss_metric.result(), weight_reg_loss, loss, f_grad, g_grad, h_grad, value_pred_mean.result(), reward_pred_mean.result(), policy_pred_dist, value_target_mean.result(), reward_target_mean.result(), policy_target_dist, actions
 
 
 # Use categorical/softmax cross-entropy loss rather than binary/logistic
 # Value and reward are non-logits, actions are logits
 def mse_loss(y_pred, y_true, mask) -> float:
     # MSE in board games, cross entropy between categorical values in Atari. 
-    return tf.reduce_mean(tf.math.squared_difference(y_pred, y_true)*mask, axis=[0,1])
+    return tf.reduce_sum(tf.reduce_sum(tf.math.squared_difference(y_pred, y_true),axis=1)*tf.squeeze(mask)) / tf.reduce_sum(tf.squeeze(mask))
 
 def ce_loss(y_pred, y_true, mask) -> float:
     # MSE in board games, cross entropy between categorical values in Atari. 
 #     return tf.reduce_mean(-y_true*tf.nn.log_softmax(y_pred, axis=None)*mask, axis=[0,1])
 #     pdb.set_trace()
-    return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred)*tf.squeeze(mask))
-#     return tf.reduce_sum(-y_true*tf.math.log(y_pred)*mask, axis=[0,1])
+#     return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred)*tf.squeeze(mask))
+    return  tf.math.divide_no_nan( tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred)*tf.squeeze(mask)) , tf.reduce_sum(tf.squeeze(mask)) )  #tf.math.maximum(tf.reduce_sum(tf.squeeze(mask)),1)
 

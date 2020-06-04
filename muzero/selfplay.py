@@ -38,7 +38,7 @@ def run_selfplay(config: MuZeroConfig, storage: SharedStorage,
 # Each game is produced by starting at the initial board position, then
 # repeatedly executing a Monte Carlo Tree Search to generate moves until the end
 # of the game is reached.
-def play_game(config: MuZeroConfig, network: Network, render=False) -> Game:
+def play_game(config: MuZeroConfig, network: Network, greedy_policy=False, render=False) -> Game:
     game = Game(config)
 
     total_reward = 0
@@ -54,7 +54,7 @@ def play_game(config: MuZeroConfig, network: Network, render=False) -> Game:
         # We then run a Monte Carlo Tree Search using only action sequences and the
         # model learned by the network.
         run_mcts(config, root, game.action_history(), network)
-        action = select_action(config, len(game.history), root, network)
+        action = select_action(config, len(game.history), root, network, greedy_policy)
         reward = game.apply(action)
         total_reward += reward
         game.store_search_statistics(root)
