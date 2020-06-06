@@ -36,7 +36,7 @@ class Network(ABC):
         """Retrieves weight tensors
         Todo: In future come up with a good way to save load from disk - probs just model.save_weights() """
         # Returns the weights of this network.
-        self.steps += 1 # probably not ideal
+#         self.steps += 1 # probably not ideal
         return (self.f.get_weights(), self.g.get_weights(), self.h.get_weights())
    
     # Todo: potentially include remote weight setting here - would mean networks would need access to storage worker
@@ -52,7 +52,7 @@ class Network(ABC):
     
     
 class Network_FC(Network):
-    def __init__(self, config, s_in=4, h_size=16, repr_size=16):
+    def __init__(self, config, s_in=4, h_size=16, repr_size=4):
         super().__init__()
         # Initialise a uniform network - should I init these networks explicitly?
         n_acts = config.action_space_size
@@ -63,7 +63,7 @@ class Network_FC(Network):
 #         self.fv = PredNetV_FC((h_size,), n_acts, h_size, self.value_support_size)
 #         self.fa = PredNetA_FC((h_size,), n_acts, h_size)
         self.g = DynaNet_FC((repr_size+1,), repr_size, h_size, support_size=self.reward_support_size, regularizer=self.regularizer)
-        self.h = ReprNet_FC((s_in,), repr_size, regularizer=self.regularizer)
+        self.h = ReprNet_FC((s_in,), repr_size, h_size, regularizer=self.regularizer)
         self.steps = 0
 
     def initial_inference(self, obs, convert_to_scalar = True) -> NetworkOutput:
@@ -95,7 +95,7 @@ class Network_FC(Network):
     
 ### FC Tensorflow model definitions ###
 
-def ReprNet_FC(input_shape, repr_size, regularizer):
+def ReprNet_FC(input_shape, repr_size, h_size, regularizer):
     o = Input(shape=input_shape)
     x = o
 #     x = Dense(h_size, kernel_regularizer=regularizer)(x)
@@ -106,10 +106,10 @@ def ReprNet_FC(input_shape, repr_size, regularizer):
 def DynaNet_FC(input_shape, repr_size, h_size, support_size, regularizer):
     s = Input(shape=input_shape)
     x = s
-    x = Dense(h_size, kernel_regularizer=regularizer)(x)
-    x = LeakyReLU()(x)
 #     x = Dense(h_size, kernel_regularizer=regularizer)(x)
 #     x = LeakyReLU()(x)
+    x = Dense(h_size, kernel_regularizer=regularizer)(x)
+    x = LeakyReLU()(x)
     
     s_new = Dense(repr_size, kernel_regularizer=regularizer, activation='sigmoid')(x)
     r = Dense(support_size*2+1, kernel_regularizer=regularizer)(x) # rewards are 1 for each frame it stays upright, 0 otherwise

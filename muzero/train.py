@@ -43,6 +43,7 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
         ray_id = replay_buffer.sample_batch.remote(config.num_unroll_steps, config.td_steps)
         batch = ray.get(ray_id)
         vl, rl, pl, wrl, tl, fg, gg, hg, v_pred, r_pred, p_pred, v_targ, r_targ, p_targ, acts = train_step(optimizer, network, batch, config.weight_decay)
+        network.steps += 1
         progbar.update(i, values=[('Value loss', vl),
                                   ('Reward loss', rl),
                                   ('Policy loss', pl),
@@ -165,7 +166,7 @@ def train_step(optimizer: Optimizer, network: Network, batch,
             value_loss = ce_loss(value, scalar_to_support(z, network.value_support_size), mask)
             reward_loss = ce_loss(reward, scalar_to_support(u, network.reward_support_size), mask)
             policy_loss = ce_loss(policy_logits, pi, mask) #tf.linalg.matmul(pi, policy_logits, transpose_a=True, transpose_b=False)
-            combined_loss = 0.25*value_loss + 1.0*reward_loss + 1.0*policy_loss
+            combined_loss = 1.0*value_loss + 1.0*reward_loss + 1.0*policy_loss
 #             pdb.set_trace()
 
             loss += scale_gradient(combined_loss, gradient_scale)

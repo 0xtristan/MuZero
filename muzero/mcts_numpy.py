@@ -223,7 +223,7 @@ def select_action(config: MuZeroConfig, num_moves: int, node: Node,
     """Search policy: softmax probability over actions dictated by visited counts"""
     # Visit counts of children nodes - policy proportional to counts
     if greedy_policy:
-        action = np.argmax(num_moves)
+        action = np.argmax(node.child_visit_count)
     else:
         # Get softmax temp
         t = config.visit_softmax_temperature_fn(

@@ -42,6 +42,7 @@ def play_game(config: MuZeroConfig, network: Network, greedy_policy=False, rende
     game = Game(config)
 
     total_reward = 0
+    i = 0
     while not game.terminal() and len(game.history) < config.max_moves:
         # At the root of the search tree we use the representation function h to
         # obtain a hidden state given the current observation.
@@ -61,7 +62,10 @@ def play_game(config: MuZeroConfig, network: Network, greedy_policy=False, rende
         
         if render:
             game.env.gym_env.render(mode='human')
-            #time.sleep(.1)
+        if greedy_policy: 
+            if i==0: print()
+            print(f"Test step {i}: \u03BD = {game.root_values[-1]:.2f}, \u03C0 = {np.around(game.child_visits[-1],2)}, a = {action}, u = {reward}")
+        i+=1
     if render:
         print(f"Game Reward: {total_reward}")
 
