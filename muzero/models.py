@@ -52,7 +52,7 @@ class Network(ABC):
     
     
 class Network_FC(Network):
-    def __init__(self, config, s_in=4, h_size=16, repr_size=8):
+    def __init__(self, config, s_in=4, h_size=16, repr_size=4):
         super().__init__()
         # Initialise a uniform network - should I init these networks explicitly?
         n_acts = config.action_space_size
@@ -109,8 +109,8 @@ class Network_FC(Network):
 def ReprNet_FC(input_shape, repr_size, h_size, regularizer):
     o = Input(shape=input_shape)
     x = o
-#     x = Dense(h_size, kernel_regularizer=regularizer)(x)
-#     x = LeakyReLU()(x)
+    x = Dense(repr_size, kernel_regularizer=regularizer)(x)
+    x = ReLU()(x)
     s = Dense(repr_size, kernel_regularizer=regularizer)(x) # Since we have +ve and -ve positions, angles, velocities
     s = min_max_scaling(s) # This replaces our activation fn
     return Model(o, s)
@@ -118,13 +118,16 @@ def ReprNet_FC(input_shape, repr_size, h_size, regularizer):
 def DynaNet_FC(input_shape, repr_size, h_size, support_size, regularizer):
     s = Input(shape=input_shape)
     x = s
-    s_new = Dense(h_size, kernel_regularizer=regularizer)(x)
-    s_new = LeakyReLU()(s_new)
-    r = Dense(h_size, kernel_regularizer=regularizer)(x)
-    r = LeakyReLU()(r)
 
-    # x = Dense(h_size, kernel_regularizer=regularizer)(x)
-    # x = LeakyReLU()(x)
+    s_new = Dense(h_size, kernel_regularizer=regularizer)(x)
+    s_new = ReLU()(s_new)
+    # s_new = Dense(h_size, kernel_regularizer=regularizer)(s_new)
+    # s_new = ReLU()(s_new)
+
+    r = Dense(h_size, kernel_regularizer=regularizer)(x)
+    r = ReLU()(r)
+    # r = Dense(h_size, kernel_regularizer=regularizer)(r)
+    # r = ReLU()(r)
     
     s_new = Dense(repr_size, kernel_regularizer=regularizer)(s_new)
     s_new = min_max_scaling(s_new)
@@ -135,35 +138,38 @@ def DynaNet_FC(input_shape, repr_size, h_size, support_size, regularizer):
 def PredNet_FC(input_shape, num_actions, h_size, support_size, regularizer):
     s = Input(shape=input_shape)
     x = s
-#     x = Dense(h_size, kernel_regularizer=regularizer)(x)
-#     x = LeakyReLU()(x)
+
     a = Dense(h_size, kernel_regularizer=regularizer)(x)
-    a = LeakyReLU()(a)
+    a = ReLU()(a)
+    # a = Dense(h_size, kernel_regularizer=regularizer)(a)
+    # a = ReLU()(a)
 
     v = Dense(h_size, kernel_regularizer=regularizer)(x)
-    v = LeakyReLU()(v)
+    v = ReLU()(v)
+    # v = Dense(h_size, kernel_regularizer=regularizer)(v)
+    # v = ReLU()(v)
     
     a = Dense(num_actions, kernel_regularizer=regularizer)(a) # policy should be logits
     v = Dense(support_size*2+1, kernel_regularizer=regularizer)(v) # This can be a large number
     return Model(s, [a, v])
 
-def PredNetV_FC(input_shape, h_size, support_size, regularizer):
-    s = Input(shape=input_shape)
-    x = Dense(h_size, kernel_regularizer=regularizer)(s)
-    x = LeakyReLU()(x)
-#     x = Dense(h_size, kernel_regularizer=regularizer)(x)
+# def PredNetV_FC(input_shape, h_size, support_size, regularizer):
+#     s = Input(shape=input_shape)
+#     x = Dense(h_size, kernel_regularizer=regularizer)(s)
+#     x = ReLU()(x)
+# #     x = Dense(h_size, kernel_regularizer=regularizer)(x)
+# #     x = ReLU()(x)
+#     v = Dense(support_size*2+1, kernel_regularizer=regularizer)(x) # This can be a large number
+#     return Model(s, v)
+#
+# def PredNetA_FC(input_shape, num_actions, h_size, regularizer):
+#     s = Input(shape=input_shape)
+#     x = Dense(h_size, kernel_regularizer=regularizer)(s)
 #     x = LeakyReLU()(x)
-    v = Dense(support_size*2+1, kernel_regularizer=regularizer)(x) # This can be a large number
-    return Model(s, v)
-
-def PredNetA_FC(input_shape, num_actions, h_size, regularizer):
-    s = Input(shape=input_shape)
-    x = Dense(h_size, kernel_regularizer=regularizer)(s)
-    x = LeakyReLU()(x)
-#     x = Dense(h_size, kernel_regularizer=regularizer)(x)
-#     x = LeakyReLU()(x)
-    a = Dense(num_actions, kernel_regularizer=regularizer)(x) # policy should be logits
-    return Model(s, a)
+# #     x = Dense(h_size, kernel_regularizer=regularizer)(x)
+# #     x = LeakyReLU()(x)
+#     a = Dense(num_actions, kernel_regularizer=regularizer)(x) # policy should be logits
+#     return Model(s, a)
 
 def min_max_scaling(tensor, eps = 1e-12):
     """ Rescales tensor linearly to range [0,1]. See appendix G of paper """

@@ -19,15 +19,23 @@ class Environment(object):
     """The environment MuZero is interacting with."""
     def __init__(self, config: MuZeroConfig):
         self.gym_env = gym.make(config.gym_env_name)
-        self.prepro = config.gym_env_name=='Breakout-v0'
-        initial_state = self.prepro(self.gym_env.reset()) if self.prepro else self.gym_env.reset()
+        initial_state = self.gym_env.reset()
+        if config.gym_env_name=='Breakout-v0':
+            initial_state = self.prepro(self.gym_env.reset())
+        elif config.gym_env_name=='CartPole-v1' or config.gym_env_name=='CartPole-v0':
+            initial_state = self.prepro_cartpole(self.gym_env.reset())
+
         self.obs_history = [initial_state]
         self.done = False
+        self.config = config
         
     def step(self, action: int):
         obs, reward, self.done, info = self.gym_env.step(action)
-        if self.prepro:
+        if self.config.gym_env_name=='Breakout-v0':
             obs = self.prepro(obs)
+        elif self.config.gym_env_name=='CartPole-v1' or self.config.gym_env_name=='CartPole-v0':
+            obs = self.prepro_cartpole(obs)
+
         self.obs_history.append(obs)
         return float(reward)
     
@@ -40,6 +48,19 @@ class Environment(object):
         """Crop, resize, B&W"""
         p_obs = obs[25:195,:,0] / 255 # crop and normalise to [0,1]
         return cv2.resize(p_obs, size, interpolation=cv2.INTER_NEAREST) # resize
+
+    def prepro_cartpole(self, obs):
+        """
+        x (cart position) ∈ [-4.8, 4.8]
+        x’ (cart velocity) ∈ [-3.4 10^38, 3.4 10^38]
+        theta (angle) ∈ [-0.42, 0.42]
+        theta’ (angle velocity) ∈ [-3.4 10^38, 3.4 10^38]
+        """
+        obs[0] /= 4.8 #(obs[0]+4.8)/9.6 # rescale to [0,1]
+        # obs[1] /= 1
+        obs[2] /= 0.42 #(obs[2] + 0.42) / 0.96
+        # obs[3] /= 1
+        return obs
 
     def get_obs(self, start:int, end:int=None):
         return self.obs_history[max(start,0):end]

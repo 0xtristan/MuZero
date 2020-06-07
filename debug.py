@@ -29,7 +29,7 @@ def make_atari_config() -> MuZeroConfig:
         num_actors=1,#350
         lr_init=0.05,#0.05
         lr_decay_steps=350e3,
-        checkpoint_interval=10,
+        checkpoint_interval=1,
         visit_softmax_temperature_fn=visit_softmax_temperature,
         # known_bounds=KnownBounds(min=0, max=500),
         num_train_gpus=0)
