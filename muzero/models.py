@@ -52,7 +52,7 @@ class Network(ABC):
     
     
 class Network_FC(Network):
-    def __init__(self, config, s_in=4, h_size=64, repr_size=2):
+    def __init__(self, config, s_in=4, h_size=32, repr_size=32):
         super().__init__()
         # Initialise a uniform network - should I init these networks explicitly?
         n_acts = config.action_space_size
@@ -62,9 +62,10 @@ class Network_FC(Network):
         self.f = PredNet_FC((repr_size,), n_acts, h_size, support_size=self.value_support_size, regularizer=self.regularizer)
 #         self.fv = PredNetV_FC((h_size,), n_acts, h_size, self.value_support_size)
 #         self.fa = PredNetA_FC((h_size,), n_acts, h_size)
-        self.g = DynaNet_FC((repr_size+1,), repr_size, h_size, support_size=self.reward_support_size, regularizer=self.regularizer)
+        self.g = DynaNet_FC((repr_size+config.action_space_size,), repr_size, h_size, support_size=self.reward_support_size, regularizer=self.regularizer)
         self.h = ReprNet_FC((s_in,), repr_size, h_size, regularizer=self.regularizer)
         self.steps = 0
+        self.config = config
 
     def initial_inference(self, obs, convert_to_scalar = True) -> NetworkOutput:
         # representation + prediction function
@@ -83,7 +84,8 @@ class Network_FC(Network):
         # dynamics + prediction function
         # Input: hidden state nfx5x5
         # Concat/pad action to channel dim of states
-        state_action = tf.concat([state,tf.expand_dims(action,axis=-1)], axis=-1)
+        action_ohe = tf.one_hot(action, self.config.action_space_size)
+        state_action = tf.concat([state,action_ohe], axis=1)
         next_state, reward = self.g(state_action)
         policy_logits, value = self.f(next_state)
 #         value = self.fv(next_state)
@@ -112,6 +114,7 @@ def ReprNet_FC(input_shape, repr_size, h_size, regularizer):
 #     x = Dense(h_size, kernel_regularizer=regularizer)(x)
 #     x = LeakyReLU()(x)
     s = Dense(repr_size, kernel_regularizer=regularizer)(x) # Since we have +ve and -ve positions, angles, velocities
+    s = min_max_scaling(s) # This replaces our activation fn
     return Model(o, s)
 
 def DynaNet_FC(input_shape, repr_size, h_size, support_size, regularizer):
@@ -123,6 +126,7 @@ def DynaNet_FC(input_shape, repr_size, h_size, support_size, regularizer):
     x = LeakyReLU()(x)
     
     s_new = Dense(repr_size, kernel_regularizer=regularizer)(x)
+    s_new = min_max_scaling(s_new)
     # r = LeakyReLU()(s_new)
     r = Dense(support_size*2+1, kernel_regularizer=regularizer)(x) # rewards are 1 for each frame it stays upright, 0 otherwise
     return Model(s, [s_new, r])
@@ -156,6 +160,12 @@ def PredNet_FC(input_shape, num_actions, h_size, support_size, regularizer):
 # #     x = LeakyReLU()(x)
 #     a = Dense(num_actions)(x) # policy should be logits
 #     return Model(s, a)
+
+def min_max_scaling(tensor, eps = 1e-12):
+    """ Rescales tensor linearly to range [0,1]. See appendix G of paper """
+    min_val = tf.reduce_min(tensor)
+    max_val = tf.reduce_max(tensor)
+    return (tensor - min_val + eps) / tf.maximum((max_val - min_val), 2 * eps)
 
 def support_to_scalar(logits, support_size, eps = 0.001):
     """

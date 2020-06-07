@@ -50,9 +50,7 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
                                   ('Weight Reg loss', wrl),
                                   ('Total loss', tl),
                                  ])
-        if (i+1)%20==0:
-            _,total_reward = play_game(config, network, greedy_policy=True, render=False)
-            
+
         with train_summary_writer.as_default():
             tf.summary.scalar('1. Losses/Value loss', vl, step=i)
             tf.summary.scalar('1. Losses/Reward loss', rl, step=i)
@@ -74,6 +72,7 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
             
             tf.summary.histogram('Action distribution', acts, step=i)
             if (i+1)%20==0:
+                _, total_reward = play_game(config, network, greedy_policy=True, render=False)
                 tf.summary.scalar('Reward', total_reward, step=i)
 
     storage.save_weights.remote(config.training_steps, network.get_weights())
@@ -83,40 +82,7 @@ def scale_gradient(tensor, scale):
     """Scales the gradient for the backward pass."""
     return tensor * scale + tf.stop_gradient(tensor) * (1 - scale)
 
-
-# # BPTT - this code can surely be vectorised - yes it really does rather than looping over batches
-# def update_weights(optimizer: Optimizer, network: Network, batch,
-#                                      weight_decay: float):
-#     loss = 0
-#     for image, actions, targets in batch:
-#         # Initial step, from the real observation.
-#         value, reward, policy_logits, hidden_state = network.initial_inference(image)
-#         predictions = [(1.0, value, reward, policy_logits)]
-
-#         # Recurrent steps, from action and previous hidden state.
-#         for action in actions:
-#             value, reward, policy_logits, hidden_state = network.recurrent_inference(hidden_state, action)
-#             predictions.append((1.0 / len(actions), value, reward, policy_logits))
-
-#             hidden_state = scale_gradient(hidden_state, 0.5)
-
-#         for prediction, target in zip(predictions, targets):
-#             gradient_scale, value, reward, policy_logits = prediction
-#             target_value, target_reward, target_policy = target
-
-#             l = (
-#                 scalar_loss(value, target_value) + # value
-#                 scalar_loss(reward, target_reward) + # reward
-#                 cce_loss_logits(policy_logits, target_policy) # action
-#             )
-
-#             loss += scale_gradient(l, gradient_scale)
-
-#     for weights in network.get_weights():
-#         loss += weight_decay * tf.nn.l2_loss(weights)
-
-#     optimizer.minimize(loss)
-        
+# def test_step()
         
 # @tf.function
 def train_step(step: int, optimizer: Optimizer, network: Network, batch, weight_decay: float):
@@ -162,8 +128,7 @@ def train_step(step: int, optimizer: Optimizer, network: Network, batch, weight_
                 # hidden_state_masked = tf.boolean_mask(hidden_state, mask, axis=0)
                 value, reward, policy_logits, hidden_state = network.recurrent_inference(hidden_state, actions[:,k], convert_to_scalar = False)
                 gradient_scale = 1.0 / (K-1)
-
-            hidden_state = scale_gradient(hidden_state, 0.5) # Todo: is this compatible with masking??
+                hidden_state = scale_gradient(hidden_state, 0.5) # Todo: is this compatible with masking??
             
             # Masking
             # Be careful with masking, if all values are masked it returns len 0 tensor
@@ -187,7 +152,7 @@ def train_step(step: int, optimizer: Optimizer, network: Network, batch, weight_
             value_loss = ce_loss(value_masked, scalar_to_support(z_masked, network.value_support_size), mask)
             reward_loss = ce_loss(reward_masked, scalar_to_support(u_masked, network.reward_support_size), mask)
             policy_loss = ce_loss(policy_logits_masked, pi_masked, mask)
-            combined_loss = 0.25*value_loss + 1.0*reward_loss + 1.0*policy_loss
+            combined_loss = 1.0*value_loss + 1.0*reward_loss + 1.0*policy_loss
 
             loss += scale_gradient(combined_loss, gradient_scale)
 

@@ -64,7 +64,7 @@ def play_game(config: MuZeroConfig, network: Network, greedy_policy=False, rende
             game.env.gym_env.render(mode='human')
         if greedy_policy: 
             if i==0: print()
-            print(f"Test step {i}: \u03BD = {game.root_values[-1]:.2f}, \u03C0 = {np.around(game.child_visits[-1],2)}, u = {reward}, a = {action}")
+            print(f"Test step {i}: \u03BD = {game.root_values[-1]:.2f}, \u03C0 = {np.around(game.child_visits[-1],2)}, a = {action}")
             print(f"Predictions:  v = {float(network_output.value):.2f}, p = {np.around(tf.nn.softmax(network_output.policy_logits)[0].numpy(), 2)}")
         i+=1
     if render:

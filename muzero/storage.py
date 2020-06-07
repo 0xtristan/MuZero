@@ -52,7 +52,7 @@ class ReplayBuffer(object):
                 vector[:pad_width[0]] = -1 # np.random.randint(20, 30, size=pad_width[0])
                 vector[vector.size-pad_width[1]:] = np.random.choice(vector[pad_width[0]:], size=pad_width[1])
 
-            action_history_padded = np.pad(action_history, (1, K-len(action_history)), mode=random_pad).astype('float32')
+            action_history_padded = np.pad(action_history, (1, K-len(action_history)), mode=random_pad)#.astype('int16') # keep it signed because I use -1
             actions.append(action_history_padded)
             
             z,u,pi,mask,policy_mask = g.make_target(i, K, td)
@@ -64,7 +64,7 @@ class ReplayBuffer(object):
         
         return (
                 tf.stack(observations, axis=0),
-                tf.stack(actions, axis=0),
+                tf.cast(tf.stack(actions, axis=0), dtype=tf.int32),
                 tf.expand_dims(tf.cast(tf.stack(target_values, axis=0),dtype=tf.float32),axis=-1),
                 tf.expand_dims(tf.stack(target_rewards, axis=0),axis=-1),
                 tf.stack(target_policies, axis=0),

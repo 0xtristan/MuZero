@@ -138,7 +138,7 @@ def run_mcts(config: MuZeroConfig, root: Node, action_history: ActionHistory,
         # Predictions: f(s_k) = v_k, p_k
         # -> (v,r,p,s)
         network_output = network.recurrent_inference(parent.hidden_state,
-                                                     tf.cast(tf.expand_dims(history.last_action(),0),dtype=tf.float32)) # Needs batch dim and to be float
+                                                     tf.expand_dims(history.last_action(),0)) # Needs batch dim and to be float
         # expand node using v,r,p predictions from NN
         expand_node(config, node, history.action_space(), network_output)
 
@@ -152,7 +152,7 @@ def run_mcts(config: MuZeroConfig, root: Node, action_history: ActionHistory,
 # Select the child with the highest UCB score.
 def best_move(config: MuZeroConfig, node: Node, min_max_stats: MinMaxStats):
     action = np.argmax(ucb_score(config, node, min_max_stats)) # ucb_score should return a np.array
-    return action
+    return int(action)
 
 def maybe_add_child(config: MuZeroConfig, action: int, node: Node):
     if action not in node.children:

@@ -127,7 +127,7 @@ class Game(object):
         # future game state value estimate ν_{t+N}
         if bootstrap_index < len(self.root_values):
             # γ^N*ν_{t+N}
-            value =  self.root_values[bootstrap_index] * self.gamma**td
+            value = self.root_values[bootstrap_index] * self.gamma**td
         else:
             value = 0
 
