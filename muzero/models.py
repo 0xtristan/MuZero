@@ -52,7 +52,7 @@ class Network(ABC):
     
     
 class Network_FC(Network):
-    def __init__(self, config, s_in=4, h_size=32, repr_size=32):
+    def __init__(self, config, s_in=4, h_size=16, repr_size=8):
         super().__init__()
         # Initialise a uniform network - should I init these networks explicitly?
         n_acts = config.action_space_size
@@ -60,8 +60,8 @@ class Network_FC(Network):
         self.reward_support_size = config.reward_support_size
         self.regularizer = regularizers.l2(config.weight_decay)
         self.f = PredNet_FC((repr_size,), n_acts, h_size, support_size=self.value_support_size, regularizer=self.regularizer)
-#         self.fv = PredNetV_FC((h_size,), n_acts, h_size, self.value_support_size)
-#         self.fa = PredNetA_FC((h_size,), n_acts, h_size)
+        # self.fv = PredNetV_FC((h_size,), h_size, support_size=self.value_support_size, regularizer=self.regularizer)
+        # self.fa = PredNetA_FC((h_size,), n_acts, h_size, regularizer=self.regularizer)
         self.g = DynaNet_FC((repr_size+config.action_space_size,), repr_size, h_size, support_size=self.reward_support_size, regularizer=self.regularizer)
         self.h = ReprNet_FC((s_in,), repr_size, h_size, regularizer=self.regularizer)
         self.steps = 0
@@ -72,8 +72,7 @@ class Network_FC(Network):
         # input: 32x80x80 observation for breakout
         state = self.h(obs)
         policy_logits, value = self.f(state)
-#         value = self.fv(state)
-#         policy_logits = self.fa(state)
+        # policy_logits, value = self.fa(state), self.fv(state)
         reward = tf.zeros((obs.shape[0],2*self.reward_support_size+1))
         if convert_to_scalar:
             value = support_to_scalar(value, self.value_support_size)
@@ -88,8 +87,7 @@ class Network_FC(Network):
         state_action = tf.concat([state,action_ohe], axis=1)
         next_state, reward = self.g(state_action)
         policy_logits, value = self.f(next_state)
-#         value = self.fv(next_state)
-#         policy_logits = self.fa(next_state)
+        # policy_logits, value = self.fa(next_state), self.fv(next_state)
         if convert_to_scalar:
             value = support_to_scalar(value, self.value_support_size)
             reward = support_to_scalar(reward, self.reward_support_size)
@@ -120,15 +118,18 @@ def ReprNet_FC(input_shape, repr_size, h_size, regularizer):
 def DynaNet_FC(input_shape, repr_size, h_size, support_size, regularizer):
     s = Input(shape=input_shape)
     x = s
-#     x = Dense(h_size, kernel_regularizer=regularizer)(x)
-#     x = LeakyReLU()(x)
-    x = Dense(h_size, kernel_regularizer=regularizer)(x)
-    x = LeakyReLU()(x)
+    s_new = Dense(h_size, kernel_regularizer=regularizer)(x)
+    s_new = LeakyReLU()(s_new)
+    r = Dense(h_size, kernel_regularizer=regularizer)(x)
+    r = LeakyReLU()(r)
+
+    # x = Dense(h_size, kernel_regularizer=regularizer)(x)
+    # x = LeakyReLU()(x)
     
-    s_new = Dense(repr_size, kernel_regularizer=regularizer)(x)
+    s_new = Dense(repr_size, kernel_regularizer=regularizer)(s_new)
     s_new = min_max_scaling(s_new)
     # r = LeakyReLU()(s_new)
-    r = Dense(support_size*2+1, kernel_regularizer=regularizer)(x) # rewards are 1 for each frame it stays upright, 0 otherwise
+    r = Dense(support_size*2+1, kernel_regularizer=regularizer)(r) # rewards are 1 for each frame it stays upright, 0 otherwise
     return Model(s, [s_new, r])
 
 def PredNet_FC(input_shape, num_actions, h_size, support_size, regularizer):
@@ -136,30 +137,33 @@ def PredNet_FC(input_shape, num_actions, h_size, support_size, regularizer):
     x = s
 #     x = Dense(h_size, kernel_regularizer=regularizer)(x)
 #     x = LeakyReLU()(x)
-    x = Dense(h_size, kernel_regularizer=regularizer)(x)
-    x = LeakyReLU()(x)
+    a = Dense(h_size, kernel_regularizer=regularizer)(x)
+    a = LeakyReLU()(a)
+
+    v = Dense(h_size, kernel_regularizer=regularizer)(x)
+    v = LeakyReLU()(v)
     
-    a = Dense(num_actions, kernel_regularizer=regularizer)(x) # policy should be logits
-    v = Dense(support_size*2+1, kernel_regularizer=regularizer)(x) # This can be a large number
+    a = Dense(num_actions, kernel_regularizer=regularizer)(a) # policy should be logits
+    v = Dense(support_size*2+1, kernel_regularizer=regularizer)(v) # This can be a large number
     return Model(s, [a, v])
 
-# def PredNetV_FC(input_shape, num_actions, h_size, support_size):
-#     s = Input(shape=input_shape)
-#     x = Dense(h_size)(s)
+def PredNetV_FC(input_shape, h_size, support_size, regularizer):
+    s = Input(shape=input_shape)
+    x = Dense(h_size, kernel_regularizer=regularizer)(s)
+    x = LeakyReLU()(x)
+#     x = Dense(h_size, kernel_regularizer=regularizer)(x)
 #     x = LeakyReLU()(x)
-# #     x = Dense(h_size)(x)
-# #     x = LeakyReLU()(x)
-#     v = Dense(support_size*2+1)(x) # This can be a large number
-#     return Model(s, v)
+    v = Dense(support_size*2+1, kernel_regularizer=regularizer)(x) # This can be a large number
+    return Model(s, v)
 
-# def PredNetA_FC(input_shape, num_actions, h_size):
-#     s = Input(shape=input_shape)
-#     x = Dense(h_size)(s)
+def PredNetA_FC(input_shape, num_actions, h_size, regularizer):
+    s = Input(shape=input_shape)
+    x = Dense(h_size, kernel_regularizer=regularizer)(s)
+    x = LeakyReLU()(x)
+#     x = Dense(h_size, kernel_regularizer=regularizer)(x)
 #     x = LeakyReLU()(x)
-# #     x = Dense(h_size)(x)
-# #     x = LeakyReLU()(x)
-#     a = Dense(num_actions)(x) # policy should be logits
-#     return Model(s, a)
+    a = Dense(num_actions, kernel_regularizer=regularizer)(x) # policy should be logits
+    return Model(s, a)
 
 def min_max_scaling(tensor, eps = 1e-12):
     """ Rescales tensor linearly to range [0,1]. See appendix G of paper """
