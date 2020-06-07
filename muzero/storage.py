@@ -37,6 +37,7 @@ class ReplayBuffer(object):
         target_rewards = []
         target_policies = []
         masks = []
+        policy_masks = []
         
         # Sample a batch size worth of games
         games = [self.sample_game() for _ in range(self.batch_size)]
@@ -46,15 +47,20 @@ class ReplayBuffer(object):
             observations.append(g.make_image(i))
             # Use -1 padding for actions, this should get masked anyway
             action_history = g.history[i:i + K]
-            action_history_padded = np.pad(action_history, (1, K-len(action_history)), 
-                                           constant_values=(-1,-1)).astype('float32')
+
+            def random_pad(vector, pad_width, iaxis, kwargs):
+                vector[:pad_width[0]] = -1 # np.random.randint(20, 30, size=pad_width[0])
+                vector[vector.size-pad_width[1]:] = np.random.choice(vector[pad_width[0]:], size=pad_width[1])
+
+            action_history_padded = np.pad(action_history, (1, K-len(action_history)), mode=random_pad).astype('float32')
             actions.append(action_history_padded)
             
-            z,u,pi,mask = g.make_target(i, K, td)
+            z,u,pi,mask,policy_mask = g.make_target(i, K, td)
             target_values.append(z)
             target_rewards.append(u)
             target_policies.append(pi)
             masks.append(mask)
+            policy_masks.append(policy_mask)
         
         return (
                 tf.stack(observations, axis=0),
@@ -62,7 +68,8 @@ class ReplayBuffer(object):
                 tf.expand_dims(tf.cast(tf.stack(target_values, axis=0),dtype=tf.float32),axis=-1),
                 tf.expand_dims(tf.stack(target_rewards, axis=0),axis=-1),
                 tf.stack(target_policies, axis=0),
-                tf.expand_dims(tf.cast(tf.stack(masks, axis=0),dtype=tf.float32),axis=-1)
+                tf.expand_dims(tf.cast(tf.stack(masks, axis=0),dtype=tf.float32),axis=-1),
+                tf.expand_dims(tf.cast(tf.stack(policy_masks, axis=0), dtype=tf.float32), axis = -1)
                )
 
     def sample_game(self) -> Game:

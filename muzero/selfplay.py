@@ -48,8 +48,8 @@ def play_game(config: MuZeroConfig, network: Network, greedy_policy=False, rende
         # obtain a hidden state given the current observation.
         root = Node(config, action=None)
         current_observation = tf.expand_dims(game.make_image(-1), 0) # 1x80x80x32 tf.Tensor - needs dummy batch dim
-        expand_node(config, root, game.legal_actions(),
-                    network.initial_inference(current_observation))
+        network_output = network.initial_inference(current_observation)
+        expand_node(config, root, game.legal_actions(), network_output)
         add_exploration_noise(config, root)
 
         # We then run a Monte Carlo Tree Search using only action sequences and the
@@ -64,7 +64,8 @@ def play_game(config: MuZeroConfig, network: Network, greedy_policy=False, rende
             game.env.gym_env.render(mode='human')
         if greedy_policy: 
             if i==0: print()
-            print(f"Test step {i}: \u03BD = {game.root_values[-1]:.2f}, \u03C0 = {np.around(game.child_visits[-1],2)}, a = {action}, u = {reward}")
+            print(f"Test step {i}: \u03BD = {game.root_values[-1]:.2f}, \u03C0 = {np.around(game.child_visits[-1],2)}, u = {reward}, a = {action}")
+            print(f"Predictions:  v = {float(network_output.value):.2f}, p = {np.around(tf.nn.softmax(network_output.policy_logits)[0].numpy(), 2)}")
         i+=1
     if render:
         print(f"Game Reward: {total_reward}")

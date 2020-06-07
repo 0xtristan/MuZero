@@ -36,13 +36,13 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
     train_log_dir = 'logs/gradient_tape/' + current_time + '/train'
     train_summary_writer = tf.summary.create_file_writer(train_log_dir)
 
-    for i in range(config.training_steps): #tqdm(range(config.training_steps), desc='Training iter'):
+    for i in range(config.training_steps):
 
         if i % config.checkpoint_interval == 0:
             storage.save_weights.remote(i, network.get_weights())
         ray_id = replay_buffer.sample_batch.remote(config.num_unroll_steps, config.td_steps)
         batch = ray.get(ray_id)
-        vl, rl, pl, wrl, tl, fg, gg, hg, v_pred, r_pred, p_pred, v_targ, r_targ, p_targ, acts = train_step(optimizer, network, batch, config.weight_decay)
+        vl, rl, pl, wrl, tl, fg, gg, hg, v_pred, r_pred, p_pred, v_targ, r_targ, p_targ, acts = train_step(i, optimizer, network, batch, config.weight_decay)
         network.steps += 1
         progbar.update(i, values=[('Value loss', vl),
                                   ('Reward loss', rl),
@@ -119,8 +119,7 @@ def scale_gradient(tensor, scale):
         
         
 # @tf.function
-def train_step(optimizer: Optimizer, network: Network, batch,
-                                     weight_decay: float):
+def train_step(step: int, optimizer: Optimizer, network: Network, batch, weight_decay: float):
     """
     Batch is 3-tuple of:
     Observation (N,80,80,1) for atari or (N,4) for cartpole
@@ -144,44 +143,76 @@ def train_step(optimizer: Optimizer, network: Network, batch,
     reward_target_mean = tf.keras.metrics.Mean()
     policy_target_dist = []
 
-    observations, actions, target_values, target_rewards, target_policies, masks = batch
+    observations, actions, target_values, target_rewards, target_policies, masks, policy_masks = batch
     with tf.GradientTape() as f_tape, tf.GradientTape() as g_tape, tf.GradientTape() as h_tape:
         loss = 0
         K = actions.shape[1] # seqlen
         for k in range(K):
+            # Targets
+            z, u, pi, mask_, policy_mask_ = target_values[:, k], target_rewards[:, k], target_policies[:, k], masks[:, k], policy_masks[:, k]
+            mask, policy_mask = tf.squeeze(mask_), tf.squeeze(policy_mask_) # (N,) rather than (N,1)
+
             if k==0:
                 # Initial step, from the real observation.
                 value, reward, policy_logits, hidden_state = network.initial_inference(observations, convert_to_scalar=False)
                 gradient_scale = 1.0
             else:
                 # All following steps
+                # masked_actions = tf.boolean_mask(actions[:,k], mask, axis=0)
+                # hidden_state_masked = tf.boolean_mask(hidden_state, mask, axis=0)
                 value, reward, policy_logits, hidden_state = network.recurrent_inference(hidden_state, actions[:,k], convert_to_scalar = False)
                 gradient_scale = 1.0 / (K-1)
 
-            hidden_state = scale_gradient(hidden_state, 0.5)
+            hidden_state = scale_gradient(hidden_state, 0.5) # Todo: is this compatible with masking??
             
-            # Targets
-            z, u, pi, mask = target_values[:,k], target_rewards[:,k], target_policies[:,k], masks[:,k]
+            # Masking
+            # Be careful with masking, if all values are masked it returns len 0 tensor
+
+            z_masked = z#tf.boolean_mask(z, mask, axis=0)
+            u_masked = u#tf.boolean_mask(u, mask, axis=0)
+            pi_masked = pi#tf.boolean_mask(pi, policy_mask, axis=0) # policy mask is mask but rolled left by 1
+
+            value_masked = value#tf.boolean_mask(value, mask, axis=0)
+            reward_masked = reward#tf.boolean_mask(reward, mask, axis=0)
+            policy_logits_masked = policy_logits#tf.boolean_mask(policy_logits, policy_mask, axis=0)
+
+            # z_masked = z*mask_
+            # u_masked = u*mask_
+            # pi_masked = pi*mask_ # policy mask is mask but rolled left by 1
+            #
+            # value_masked = value*mask_
+            # reward_masked = reward*mask_
+            # policy_logits_masked = policy_logits*mask_
             
-            value_loss = ce_loss(value, scalar_to_support(z, network.value_support_size), mask)
-            reward_loss = ce_loss(reward, scalar_to_support(u, network.reward_support_size), mask)
-            policy_loss = ce_loss(policy_logits, pi, mask) #tf.linalg.matmul(pi, policy_logits, transpose_a=True, transpose_b=False)
-            combined_loss = 1.0*value_loss + 1.0*reward_loss + 1.0*policy_loss
-#             pdb.set_trace()
+            value_loss = ce_loss(value_masked, scalar_to_support(z_masked, network.value_support_size), mask)
+            reward_loss = ce_loss(reward_masked, scalar_to_support(u_masked, network.reward_support_size), mask)
+            policy_loss = ce_loss(policy_logits_masked, pi_masked, mask)
+            combined_loss = 0.25*value_loss + 1.0*reward_loss + 1.0*policy_loss
 
             loss += scale_gradient(combined_loss, gradient_scale)
+
+            if tf.math.is_nan(loss):
+                print("Loss is NaN")
+                pdb.set_trace()
             
             # Metric logging for tensorboard
             value_loss_metric(value_loss)
             reward_loss_metric(reward_loss)
             policy_loss_metric(policy_loss)
-            
-            value_pred_mean(support_to_scalar(value, network.value_support_size)*mask)
-            reward_pred_mean(support_to_scalar(reward, network.reward_support_size)*mask)
-            policy_pred_dist.append(tf.nn.softmax(policy_logits)*mask)
-            value_target_mean(z*mask)
-            reward_target_mean(u*mask)
-            policy_target_dist.append(pi*mask)
+
+            scalar_value = support_to_scalar(value_masked, network.value_support_size)
+            scalar_reward = support_to_scalar(reward_masked, network.reward_support_size)
+            policy_probs = tf.nn.softmax(policy_logits)
+
+            if (step+1)%100==0:
+                print("break")
+
+            value_pred_mean(scalar_value)
+            reward_pred_mean(scalar_reward)
+            policy_pred_dist.append(policy_probs*mask_)
+            value_target_mean(z_masked)
+            reward_target_mean(u_masked)
+            policy_target_dist.append(pi*mask_)
         
 #         total_loss_metric(loss)
 #         total_reward()
@@ -200,20 +231,22 @@ def train_step(optimizer: Optimizer, network: Network, batch,
     optimizer.apply_gradients(zip(f_grad, network.f.trainable_variables))
     optimizer.apply_gradients(zip(g_grad, network.g.trainable_variables))
     optimizer.apply_gradients(zip(h_grad, network.h.trainable_variables))
-    # We ought to average or sum these losses - otherwise reward loss is 0 at the end lol
-    return value_loss_metric.result(), reward_loss_metric.result(), policy_loss_metric.result(), weight_reg_loss, loss, f_grad, g_grad, h_grad, value_pred_mean.result(), reward_pred_mean.result(), policy_pred_dist, value_target_mean.result(), reward_target_mean.result(), policy_target_dist, actions
+
+    # optimizer.minimize(loss=loss, var_list=network.cb_get_variables())
+
+    return value_loss_metric.result(), reward_loss_metric.result(), policy_loss_metric.result(), weight_reg_loss, loss, f_grad, g_grad, h_grad, value_pred_mean.result(), reward_pred_mean.result(), policy_pred_dist, value_target_mean.result(), reward_target_mean.result(), policy_target_dist, actions[:,1:]
 
 
 # Use categorical/softmax cross-entropy loss rather than binary/logistic
 # Value and reward are non-logits, actions are logits
-def mse_loss(y_pred, y_true, mask) -> float:
+def mse_loss(y_pred, y_true) -> float:
     # MSE in board games, cross entropy between categorical values in Atari. 
     return tf.reduce_sum(tf.reduce_sum(tf.math.squared_difference(y_pred, y_true),axis=1)*tf.squeeze(mask)) / tf.reduce_sum(tf.squeeze(mask))
 
 def ce_loss(y_pred, y_true, mask) -> float:
-    # MSE in board games, cross entropy between categorical values in Atari. 
-#     return tf.reduce_mean(-y_true*tf.nn.log_softmax(y_pred, axis=None)*mask, axis=[0,1])
-#     pdb.set_trace()
-#     return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred)*tf.squeeze(mask))
-    return  tf.math.divide_no_nan( tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred)*tf.squeeze(mask)) , tf.reduce_sum(tf.squeeze(mask)) )  #tf.math.maximum(tf.reduce_sum(tf.squeeze(mask)),1)
-
+    # MSE in board games, cross entropy between categorical values in Atari.
+    # return  tf.math.divide_no_nan( tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred)*mask) , tf.reduce_sum(mask) )
+    if y_pred.shape[0]==0 or y_true.shape[0]==0:
+        print("Entire batch masked")
+        return 0
+    return tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred))

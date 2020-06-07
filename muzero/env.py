@@ -148,7 +148,7 @@ class Game(object):
         # returns len K+1 sequences
         target_values, target_rewards, target_policies = [], [], []
         # We use a boolean masking vector to indicate the end of a sequence (à la NLP)
-        mask = []
+        mask, policy_mask = [], []
         # K + 1 iterations
         for current_index in range(t, t + K + 1):
             ## Value Target z_{t+K} ##
@@ -160,33 +160,47 @@ class Game(object):
             # For simplicity the network always predicts the most recently received
             # reward, even for the initial representation network where we already
             # know this reward.
-            if current_index > 0 and current_index <= len(self.rewards):
+            if current_index > t and current_index <= len(self.rewards):
+                # self.rewards[i] is the reward received after the ith state
+                # self.rewards[i-1] is therefore the most recently received reward
                 last_reward = self.rewards[current_index - 1]
             else:
-                # For i=0 and i=K+1
+                # For i=t and i=t+K+1
+                # Be careful because we have to set r=0 for first target (not first gamestep) due to initial inference
                 last_reward = 0
 
             if current_index < len(self.root_values):
-#                 targets.append((value, last_reward, self.child_visits[current_index]))
                 target_values.append(value)
                 target_rewards.append(last_reward)
                 target_policies.append(self.child_visits[current_index])
-                mask.append(1)
+                policy_mask.append(1)
             else:
                 # States past the end are treated as absorbing states
-#                 targets.append((0, last_reward, []))
                 target_values.append(0)
                 target_rewards.append(last_reward) # 0
                 # Uniform policy: 1/len(actions) for all actions
                 # Todo: is this a valid thing to do? @Sholto review
-                # This is actually meaningless because the policy is using logits
-#                 uniform_policy = [1/self.config.action_space_size 
-#                                   for _ in range(self.config.action_space_size)]
-                dummy_policy = np.array([-1 for _ in range(self.config.action_space_size)],dtype='float32')
+                # This is probability targets not logits
+                # uniform_policy = [1/self.config.action_space_size
+                #                   for _ in range(self.config.action_space_size)]
+                dummy_policy = np.array([1/self.config.action_space_size for _ in range(self.config.action_space_size)], dtype='float32')
+                # dummy_policy = np.array([-1 for _ in range(self.config.action_space_size)],dtype='float32')
                 target_policies.append(dummy_policy)
+                policy_mask.append(0)
+
+            if current_index <= len(self.root_values):
+                mask.append(1)
+            else:
                 mask.append(0)
+
+            # v = [v0,v1,v2,0,0]
+            # r = [0,r0,r1,r2,0]
+            # p = [p0,p1,p2,_,_]
+            # m = [1,1,1,1,0]
+            # pm = [1,1,1,0,0]
+            # a = [_,a0,a1,a3,_] - first index is initial_inference and thus no action
                 
-        return target_values, target_rewards, target_policies, mask
+        return target_values, target_rewards, target_policies, mask, policy_mask
     
     def action_history(self) -> ActionHistory:
         return ActionHistory(self.history, self.action_space_size)

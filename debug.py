@@ -1,22 +1,9 @@
-import tensorflow as tf
-print(tf.__version__)
-print("Num GPUs Available: ", len(tf.config.experimental.list_physical_devices('GPU')))
-print(tf.config.experimental.list_physical_devices())
-
 from muzero.config import MuZeroConfig
 from muzero.main import Muzero
-
+from muzero.common import KnownBounds
 import ray
-import gym
 
-e = gym.make('CartPole-v0')
-
-print(e.observation_space) # Cart Position, Cart Velocity, Pole Angle, Velocity at Tip
-print(e.action_space) # Push Cart Left/Right
-
-gpu_count = len(tf.config.experimental.list_physical_devices('GPU'))
-
-def make_cartpole_config() -> MuZeroConfig:
+def make_atari_config() -> MuZeroConfig:
 
     def visit_softmax_temperature(num_moves, training_steps):
         if training_steps < 500e3:
@@ -27,29 +14,29 @@ def make_cartpole_config() -> MuZeroConfig:
             return 0.25
 
     return MuZeroConfig(
-        gym_env_name='CartPole-v0',
+        gym_env_name='CartPole-v1',
         action_space_size=2,
-        value_support_size=40,
+        value_support_size=10,
+        reward_support_size=10,
         selfplay_iterations=100, # Todo: implement None for continuous play
-        max_moves=27,#000,  # Half an hour at action repeat 4.
+        max_moves=500,
         discount=0.997,
         use_TD_values=True,
         dirichlet_alpha=0.25,
         num_simulations=50,
-        batch_size=10,#24,#1024,
-        td_steps=10,
-        num_actors=1,#350,
-        lr_init=0.05,
+        batch_size=128,#1024,
+        td_steps=10,#10
+        num_actors=1,#350
+        lr_init=0.05,#0.05
         lr_decay_steps=350e3,
-        checkpoint_interval=100,
+        checkpoint_interval=10,
         visit_softmax_temperature_fn=visit_softmax_temperature,
-        num_train_gpus=gpu_count)
+        # known_bounds=KnownBounds(min=0, max=500),
+        num_train_gpus=0)
 
+ray.init(local_mode=False)
 
-ray.init()
-config = make_cartpole_config()
+config = make_atari_config()
 mz = Muzero(config)
 
 mz.run()
-
-# I reckon we currently only have support on value, as signoided should really work well for r in 0-1 regimes.
