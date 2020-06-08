@@ -126,7 +126,7 @@ def DynaNet_FC(input_shape, repr_size, h_size, support_size, regularizer):
     s_new = Dense(repr_size, kernel_regularizer=regularizer)(s_new)
     s_new = ReLU()(s_new)
 
-    r = Dense(support_size, kernel_regularizer=regularizer)(r)
+    r = Dense(6, kernel_regularizer=regularizer)(r)
     r = ReLU()(r)
     
     s_new = Dense(repr_size, kernel_regularizer=regularizer)(s_new)
@@ -138,7 +138,7 @@ def PredNet_FC(input_shape, num_actions, h_size, support_size, regularizer):
     s = Input(shape=input_shape)
     a = v = s
 
-    a = Dense(8, kernel_regularizer=regularizer)(a)
+    a = Dense(4, kernel_regularizer=regularizer)(a)
     a = ReLU()(a)
 
     v = Dense(8, kernel_regularizer=regularizer)(v)
