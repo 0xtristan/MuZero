@@ -181,7 +181,7 @@ class Game(object):
             # For simplicity the network always predicts the most recently received
             # reward, even for the initial representation network where we already
             # know this reward.
-            if current_index > t and current_index <= len(self.rewards):
+            if current_index > 0 and current_index <= len(self.rewards):
                 # self.rewards[i] is the reward received after the ith state
                 # self.rewards[i-1] is therefore the most recently received reward
                 last_reward = self.rewards[current_index - 1]
@@ -200,10 +200,7 @@ class Game(object):
                 target_values.append(0)
                 target_rewards.append(last_reward) # 0
                 # Uniform policy: 1/len(actions) for all actions
-                # Todo: is this a valid thing to do? @Sholto review
                 # This is probability targets not logits
-                # uniform_policy = [1/self.config.action_space_size
-                #                   for _ in range(self.config.action_space_size)]
                 dummy_policy = np.array([1/self.config.action_space_size for _ in range(self.config.action_space_size)], dtype='float32')
                 # dummy_policy = np.array([-1 for _ in range(self.config.action_space_size)],dtype='float32')
                 target_policies.append(dummy_policy)

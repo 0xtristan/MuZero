@@ -73,10 +73,13 @@ class Network_FC(Network):
         state = self.h(obs)
         policy_logits, value = self.f(state)
         # policy_logits, value = self.fa(state), self.fv(state)
-        reward = tf.zeros((obs.shape[0],2*self.reward_support_size+1))
+        reward = tf.ones((self.config.batch_size,1)) # Todo: test this
         if convert_to_scalar:
             value = support_to_scalar(value, self.value_support_size)
-            reward = support_to_scalar(reward, self.reward_support_size)
+            # reward = support_to_scalar(reward, self.reward_support_size)
+        else:
+            reward = scalar_to_support(reward, self.reward_support_size)
+
         return NetworkOutput(value, reward, policy_logits, state)
     
     def recurrent_inference(self, state, action, convert_to_scalar = True) -> NetworkOutput:

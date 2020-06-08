@@ -42,7 +42,7 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
             storage.save_weights.remote(i, network.get_weights())
         ray_id = replay_buffer.sample_batch.remote(config.num_unroll_steps, config.td_steps)
         batch = ray.get(ray_id)
-        vl, rl, pl, wrl, tl, fg, gg, hg, v_pred, r_pred, p_pred, v_targ, r_targ, p_targ, acts = train_step(i, optimizer, network, batch, config.weight_decay)
+        vl, rl, pl, wrl, tl, fg, gg, hg, v_pred, r_pred, p_pred, v_targ, r_targ, p_targ, acts, vp0d, vp1d, vpfd, vt0d, vt1d, vtfd, rp0d, rp1d, rpfd, rt0d, rt1d, rtfd = train_step(i, optimizer, network, batch, config.weight_decay)
         network.steps += 1
         progbar.update(i, values=[('Value loss', vl),
                                   ('Reward loss', rl),
@@ -71,6 +71,18 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
             tf.summary.histogram('3. Targets/Policy target dist', p_targ, step=i)
             
             tf.summary.histogram('Action distribution', acts, step=i)
+            tf.summary.histogram('2. Predictions/Value prediction dist k=0', vp0d, step=i)
+            tf.summary.histogram('2. Predictions/Value prediction dist k=1', vp1d, step=i)
+            tf.summary.histogram('2. Predictions/Value prediction dist k=-1', vpfd, step=i)
+            tf.summary.histogram('3. Targets/Value target dist k=0', vt0d, step=i)
+            tf.summary.histogram('3. Targets/Value target dist k=1', vt1d, step=i)
+            tf.summary.histogram('3. Targets/Value target dist k=-1', vtfd, step=i)
+            # tf.summary.histogram('2. Predictions/Reward prediction dist k=0', rp0d, step=i, buckets=5)
+            tf.summary.histogram('2. Predictions/Reward prediction dist k=1', rp1d, step=i, buckets=5)
+            tf.summary.histogram('2. Predictions/Reward prediction dist k=-1', rpfd, step=i, buckets=5)
+            # tf.summary.histogram('3. Targets/Reward target dist k=0', rt0d, step=i, buckets=5)
+            tf.summary.histogram('3. Targets/Reward target dist k=1', rt1d, step=i, buckets=5)
+            tf.summary.histogram('3. Targets/Reward target dist k=-1', rtfd, step=i, buckets=5)
             if (i+1)%50==0:
                 _, total_reward = play_game(config, network, greedy_policy=True, render=False)
                 tf.summary.scalar('Reward', total_reward, step=i)
@@ -98,16 +110,18 @@ def train_step(step: int, optimizer: Optimizer, network: Network, batch, weight_
     value_loss_metric = tf.keras.metrics.Mean()
     reward_loss_metric = tf.keras.metrics.Mean()
     policy_loss_metric = tf.keras.metrics.Mean()
-#     weight_reg_loss_metric = tf.keras.metrics.Mean()
-#     total_loss_metric = tf.keras.metrics.Mean()
 
     value_pred_mean = tf.keras.metrics.Mean()
     reward_pred_mean = tf.keras.metrics.Mean()
     policy_pred_dist = []
+    value_pred_k0_dist, value_pred_k1_dist, value_pred_kf_dist = [], [], []
+    reward_pred_k0_dist, reward_pred_k1_dist, reward_pred_kf_dist = [], [], []
     
     value_target_mean = tf.keras.metrics.Mean()
     reward_target_mean = tf.keras.metrics.Mean()
     policy_target_dist = []
+    value_target_k0_dist, value_target_k1_dist, value_target_kf_dist = [], [], []
+    reward_target_k0_dist, reward_target_k1_dist, reward_target_kf_dist = [], [], []
 
     observations, actions, target_values, target_rewards, target_policies, masks, policy_masks = batch
     with tf.GradientTape() as f_tape, tf.GradientTape() as g_tape, tf.GradientTape() as h_tape:
@@ -165,8 +179,8 @@ def train_step(step: int, optimizer: Optimizer, network: Network, batch, weight_
             reward_loss_metric(reward_loss)
             policy_loss_metric(policy_loss)
 
-            scalar_value = support_to_scalar(value_masked, network.value_support_size)
-            scalar_reward = support_to_scalar(reward_masked, network.reward_support_size)
+            scalar_value = support_to_scalar(value, network.value_support_size)
+            scalar_reward = support_to_scalar(reward, network.reward_support_size)
             policy_probs = tf.nn.softmax(policy_logits)
 
             if (step+1)%100==0:
@@ -174,10 +188,29 @@ def train_step(step: int, optimizer: Optimizer, network: Network, batch, weight_
 
             value_pred_mean(scalar_value)
             reward_pred_mean(scalar_reward)
-            policy_pred_dist.append(policy_probs*mask_)
+            policy_pred_dist.append(policy_probs*policy_mask_)
+            if k==0:
+                value_pred_k0_dist.append(scalar_value)
+                reward_pred_k0_dist.append(scalar_reward)
+            if k==1:
+                value_pred_k1_dist.append(scalar_value)
+                reward_pred_k1_dist.append(scalar_reward)
+            if k==K-1:
+                value_pred_kf_dist.append(scalar_value)
+                reward_pred_kf_dist.append(scalar_reward)
+
             value_target_mean(z_masked)
             reward_target_mean(u_masked)
-            policy_target_dist.append(pi*mask_)
+            policy_target_dist.append(pi*policy_mask_)
+            if k==0:
+                value_target_k0_dist.append(z)
+                reward_target_k0_dist.append(u)
+            if k==1:
+                value_target_k1_dist.append(z)
+                reward_target_k1_dist.append(u)
+            if k==K-1:
+                value_target_kf_dist.append(z)
+                reward_target_kf_dist.append(u)
         
 #         total_loss_metric(loss)
 #         total_reward()
@@ -199,7 +232,12 @@ def train_step(step: int, optimizer: Optimizer, network: Network, batch, weight_
 
     # optimizer.minimize(loss=loss, var_list=network.cb_get_variables())
 
-    return value_loss_metric.result(), reward_loss_metric.result(), policy_loss_metric.result(), weight_reg_loss, loss, f_grad, g_grad, h_grad, value_pred_mean.result(), reward_pred_mean.result(), policy_pred_dist, value_target_mean.result(), reward_target_mean.result(), policy_target_dist, actions[:,1:]
+    return value_loss_metric.result(), reward_loss_metric.result(), policy_loss_metric.result(), weight_reg_loss, loss, f_grad, g_grad, h_grad, \
+           value_pred_mean.result(), reward_pred_mean.result(), policy_pred_dist, value_target_mean.result(), reward_target_mean.result(), policy_target_dist, \
+           actions[:,1:], \
+           value_pred_k0_dist, value_pred_k1_dist, value_pred_kf_dist, value_target_k0_dist, value_target_k1_dist, value_target_kf_dist, \
+           reward_pred_k0_dist, reward_pred_k1_dist, reward_pred_kf_dist, reward_target_k0_dist, reward_target_k1_dist, reward_target_kf_dist
+
 
 
 # Use categorical/softmax cross-entropy loss rather than binary/logistic
