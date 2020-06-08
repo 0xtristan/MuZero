@@ -2,7 +2,7 @@ import tensorflow as tf
 from tensorflow.keras.layers import Conv2D, BatchNormalization, Dense, Add, ReLU, Input, Flatten, LeakyReLU
 from tensorflow.keras.activations import sigmoid
 from tensorflow.keras.models import Model
-from tensorflow_core.python.keras import regularizers
+from tensorflow.keras import regularizers
 from typing import NamedTuple, List, Callable
 from abc import ABC, abstractmethod
 import ray
