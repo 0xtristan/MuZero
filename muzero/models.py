@@ -141,7 +141,7 @@ def PredNet_FC(input_shape, num_actions, h_size, support_size, regularizer):
     a = Dense(4, kernel_regularizer=regularizer)(a)
     a = ReLU()(a)
 
-    v = Dense(8, kernel_regularizer=regularizer)(v)
+    v = Dense(16, kernel_regularizer=regularizer)(v)
     v = ReLU()(v)
     
     a = Dense(num_actions, kernel_regularizer=regularizer)(a) # policy should be logits
