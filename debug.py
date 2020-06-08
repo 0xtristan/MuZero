@@ -16,8 +16,8 @@ def make_atari_config() -> MuZeroConfig:
     return MuZeroConfig(
         gym_env_name='CartPole-v1',
         action_space_size=2,
-        value_support_size=100,
-        reward_support_size=2,
+        value_support_size=50,
+        reward_support_size=5,
         selfplay_iterations=1000, # Todo: implement None for continuous play
         max_moves=500,
         discount=0.997,
@@ -25,11 +25,11 @@ def make_atari_config() -> MuZeroConfig:
         dirichlet_alpha=0.25,
         num_simulations=50,
         batch_size=128,#1024,
-        td_steps=50,#10
+        td_steps=20,#10
         num_actors=1,#350
         lr_init=0.05,#0.05
         lr_decay_steps=350e3,
-        checkpoint_interval=5,
+        checkpoint_interval=10,
         visit_softmax_temperature_fn=visit_softmax_temperature,
         # known_bounds=KnownBounds(min=0, max=500),
         num_train_gpus=0)

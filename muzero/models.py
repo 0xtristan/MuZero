@@ -122,8 +122,8 @@ def DynaNet_FC(input_shape, repr_size, h_size, support_size, regularizer):
     s = Input(shape=input_shape)
     x = s
 
-    s_new = Dense(h_size, kernel_regularizer=regularizer)(x)
-    s_new = ReLU()(s_new)
+    # s_new = Dense(h_size, kernel_regularizer=regularizer)(x)
+    # s_new = ReLU()(s_new)
     # s_new = Dense(h_size, kernel_regularizer=regularizer)(s_new)
     # s_new = ReLU()(s_new)
 
@@ -132,7 +132,7 @@ def DynaNet_FC(input_shape, repr_size, h_size, support_size, regularizer):
     # r = Dense(h_size, kernel_regularizer=regularizer)(r)
     # r = ReLU()(r)
     
-    s_new = Dense(repr_size, kernel_regularizer=regularizer)(s_new)
+    s_new = Dense(repr_size, kernel_regularizer=regularizer)(x)
     s_new = min_max_scaling(s_new)
     # r = LeakyReLU()(s_new)
     r = Dense(support_size*2+1, kernel_regularizer=regularizer)(x) # rewards are 1 for each frame it stays upright, 0 otherwise
@@ -142,7 +142,7 @@ def PredNet_FC(input_shape, num_actions, h_size, support_size, regularizer):
     s = Input(shape=input_shape)
     x = s
 
-    a = Dense(h_size, kernel_regularizer=regularizer)(x)
+    a = Dense(4, kernel_regularizer=regularizer)(x)
     a = ReLU()(a)
     # a = Dense(h_size, kernel_regularizer=regularizer)(a)
     # a = ReLU()(a)
