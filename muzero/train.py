@@ -149,11 +149,11 @@ def train_step(step: int, optimizer: Optimizer, network: Network, batch, weight_
 
             z_masked = z#tf.boolean_mask(z, mask, axis=0)
             u_masked = u#tf.boolean_mask(u, mask, axis=0)
-            pi_masked = pi#tf.boolean_mask(pi, policy_mask, axis=0) # policy mask is mask but rolled left by 1
+            pi_masked = tf.boolean_mask(pi, policy_mask, axis=0) # policy mask is mask but rolled left by 1
 
             value_masked = value#tf.boolean_mask(value, mask, axis=0)
             reward_masked = reward#tf.boolean_mask(reward, mask, axis=0)
-            policy_logits_masked = policy_logits#tf.boolean_mask(policy_logits, policy_mask, axis=0)
+            policy_logits_masked = tf.boolean_mask(policy_logits, policy_mask, axis=0)
 
             # z_masked = z*mask_
             # u_masked = u*mask_
