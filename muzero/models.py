@@ -52,7 +52,7 @@ class Network(ABC):
     
     
 class Network_FC(Network):
-    def __init__(self, config, s_in=4, h_size=32, repr_size=4):
+    def __init__(self, config, s_in=4, h_size=32, repr_size=8):
         super().__init__()
         # Initialise a uniform network - should I init these networks explicitly?
         n_acts = config.action_space_size
@@ -123,11 +123,11 @@ def DynaNet_FC(input_shape, repr_size, h_size, support_size, regularizer):
     s = Input(shape=input_shape)
     s_new = r = s
 
-    s_new = Dense(repr_size, kernel_regularizer=regularizer)(s_new)
-    s_new = ReLU()(s_new)
+    # s_new = Dense(repr_size, kernel_regularizer=regularizer)(s_new)
+    # s_new = ReLU()(s_new)
 
-    r = Dense(6, kernel_regularizer=regularizer)(r)
-    r = ReLU()(r)
+    # r = Dense(6, kernel_regularizer=regularizer)(r)
+    # r = ReLU()(r)
     
     s_new = Dense(repr_size, kernel_regularizer=regularizer)(s_new)
     s_new = min_max_scaling(s_new)
@@ -138,11 +138,11 @@ def PredNet_FC(input_shape, num_actions, h_size, support_size, regularizer):
     s = Input(shape=input_shape)
     a = v = s
 
-    a = Dense(4, kernel_regularizer=regularizer)(a)
-    a = ReLU()(a)
+    # a = Dense(4, kernel_regularizer=regularizer)(a)
+    # a = ReLU()(a)
 
-    v = Dense(16, kernel_regularizer=regularizer)(v)
-    v = ReLU()(v)
+    # v = Dense(16, kernel_regularizer=regularizer)(v)
+    # v = ReLU()(v)
     
     a = Dense(num_actions, kernel_regularizer=regularizer)(a) # policy should be logits
     v = Dense(support_size*2+1, kernel_regularizer=regularizer)(v) # This can be a large number
