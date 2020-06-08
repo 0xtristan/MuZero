@@ -52,7 +52,7 @@ class Network(ABC):
     
     
 class Network_FC(Network):
-    def __init__(self, config, s_in=4, h_size=32, repr_size=8):
+    def __init__(self, config, s_in=4, h_size=32, repr_size=4):
         super().__init__()
         # Initialise a uniform network - should I init these networks explicitly?
         n_acts = config.action_space_size
@@ -73,7 +73,8 @@ class Network_FC(Network):
         state = self.h(obs)
         policy_logits, value = self.f(state)
         # policy_logits, value = self.fa(state), self.fv(state)
-        reward = tf.ones((self.config.batch_size,1)) # Todo: test this
+        # Batch size needs to be allocated dynamically because can either be 1 or N
+        reward = tf.ones((obs.shape[0],1)) # Todo: test this
         if convert_to_scalar:
             value = support_to_scalar(value, self.value_support_size)
             # reward = support_to_scalar(reward, self.reward_support_size)
@@ -111,40 +112,37 @@ class Network_FC(Network):
 
 def ReprNet_FC(input_shape, repr_size, h_size, regularizer):
     o = Input(shape=input_shape)
-    x = o
-    # x = Dense(repr_size, kernel_regularizer=regularizer)(x)
-    # x = ReLU()(x)
-    s = Dense(repr_size, kernel_regularizer=regularizer)(x) # Since we have +ve and -ve positions, angles, velocities
+    s = o
+    # s = Dense(repr_size, kernel_regularizer=regularizer)(s)
+    # s = ReLU()(s)
+    s = Dense(repr_size, kernel_regularizer=regularizer)(s) # Since we have +ve and -ve positions, angles, velocities
     s = min_max_scaling(s) # This replaces our activation fn
     return Model(o, s)
 
 def DynaNet_FC(input_shape, repr_size, h_size, support_size, regularizer):
     s = Input(shape=input_shape)
-    x = s
+    s_new = r = s
 
-    s_new = Dense(repr_size, kernel_regularizer=regularizer)(x)
+    s_new = Dense(repr_size, kernel_regularizer=regularizer)(s_new)
     s_new = ReLU()(s_new)
 
-    r = Dense(support_size, kernel_regularizer=regularizer)(x)
+    r = Dense(support_size, kernel_regularizer=regularizer)(r)
     r = ReLU()(r)
     
     s_new = Dense(repr_size, kernel_regularizer=regularizer)(s_new)
     s_new = min_max_scaling(s_new)
-    # r = LeakyReLU()(s_new)
     r = Dense(support_size*2+1, kernel_regularizer=regularizer)(r) # rewards are 1 for each frame it stays upright, 0 otherwise
     return Model(s, [s_new, r])
 
 def PredNet_FC(input_shape, num_actions, h_size, support_size, regularizer):
     s = Input(shape=input_shape)
-    x = s
+    a = v = s
 
-    a = Dense(2*num_actions, kernel_regularizer=regularizer)(x)
+    a = Dense(8, kernel_regularizer=regularizer)(a)
     a = ReLU()(a)
 
-
-    v = Dense(support_size, kernel_regularizer=regularizer)(x)
+    v = Dense(8, kernel_regularizer=regularizer)(v)
     v = ReLU()(v)
-
     
     a = Dense(num_actions, kernel_regularizer=regularizer)(a) # policy should be logits
     v = Dense(support_size*2+1, kernel_regularizer=regularizer)(v) # This can be a large number
