@@ -39,12 +39,12 @@ class Muzero(object):
         self.launch_job_serial(train_network, self.config, self.storage, self.replay_buffer)
 #         best_network = self.storage.latest_network()
 
-    def simulate(self):
-        network = Network_FC(config) if config.model_type == "fc" else Network_CNN(config)
-        network_weights = ray.get(storage.latest_weights.remote())
-        network.set_weights(network_weights)
-        play_game(self.config, network, render=True)
-        self.launch_job_serial(train_network, self.config, self.storage, replay_buffer_worker)
-#         best_network = self.storage.latest_network()
+#     def simulate(self):
+#         network = Network_FC(config) if config.model_type == "fc" else Network_CNN(config)
+#         network_weights = ray.get(storage.latest_weights.remote())
+#         network.set_weights(network_weights)
+#         play_game(self.config, network, render=True)
+#         self.launch_job_serial(train_network, self.config, self.storage, replay_buffer_worker)
+# #         best_network = self.storage.latest_network()
 
 

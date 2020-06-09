@@ -74,12 +74,15 @@ class Network_FC(Network):
         policy_logits, value = self.f(state)
         # policy_logits, value = self.fa(state), self.fv(state)
         # Batch size needs to be allocated dynamically because can either be 1 or N
-        reward = tf.ones((obs.shape[0],1)) # Todo: test this
+        DUMMY_REWARD = 0
+        reward = tf.zeros((obs.shape[0], 1)) + DUMMY_REWARD
         if convert_to_scalar:
             value = support_to_scalar(value, self.value_support_size)
-            # reward = support_to_scalar(reward, self.reward_support_size)
         else:
-            reward = scalar_to_support(reward, self.reward_support_size)
+            # This would have to be support logits
+            # reward = scalar_to_support(reward, self.reward_support_size)
+            # this literally just make a support for 0
+            reward = tf.cast(tf.tile(tf.expand_dims(tf.scatter_nd(tf.constant([[self.reward_support_size+DUMMY_REWARD]]), tf.constant([1.0]), tf.constant([2*self.reward_support_size+1])), 0), [obs.shape[0], 1]), tf.float32)
 
         return NetworkOutput(value, reward, policy_logits, state)
     
@@ -123,11 +126,11 @@ def DynaNet_FC(input_shape, repr_size, h_size, support_size, regularizer):
     s = Input(shape=input_shape)
     s_new = r = s
 
-    # s_new = Dense(repr_size, kernel_regularizer=regularizer)(s_new)
-    # s_new = ReLU()(s_new)
+    s_new = Dense(repr_size, kernel_regularizer=regularizer)(s_new)
+    s_new = ReLU()(s_new)
 
-    # r = Dense(6, kernel_regularizer=regularizer)(r)
-    # r = ReLU()(r)
+    r = Dense(6, kernel_regularizer=regularizer)(r)
+    r = ReLU()(r)
     
     s_new = Dense(repr_size, kernel_regularizer=regularizer)(s_new)
     s_new = min_max_scaling(s_new)
@@ -174,7 +177,7 @@ def min_max_scaling(tensor, eps = 1e-12):
 
 def support_to_scalar(logits, support_size, eps = 0.001):
     """
-    Transform a categorical representation to a scalar
+    Transform a categorical representation (logits) to a scalar
     See paper appendix Network Architecture
     """
     # Decode to a scalar
@@ -190,13 +193,13 @@ def support_to_scalar(logits, support_size, eps = 0.001):
     x = tf.expand_dims(x, 1)
     return x
 
-def scalar_to_support(x, support_size):
+def scalar_to_support(x, support_size, eps = 0.001):
     """
     Transform a scalar to a categorical representation with (2 * support_size + 1) categories
     See paper appendix Network Architecture
     """
     # Reduce the scale (defined in https://arxiv.org/abs/1805.11593)
-    x = tf.math.sign(x) * (tf.math.sqrt(tf.math.abs(x) + 1) - 1) + 0.001 * x
+    x = tf.math.sign(x) * (tf.math.sqrt(tf.math.abs(x) + 1) - 1) + eps * x
 
     # Encode on a vector
     # input (N,1)

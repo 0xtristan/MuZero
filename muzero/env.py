@@ -131,7 +131,7 @@ class Game(object):
         if len(frame_tensor.shape)==2:
 #             padded_frames = tf.pad(frame_tensor, paddings=[[0, 0], [0, padding_size]], constant_values=0)
             # Fuck it let's just forget the history - this is a shitty hack
-            padded_frames = tf.convert_to_tensor(self.env.obs_history[-1], dtype=tf.float32) # (1,4)
+            padded_frames = tf.convert_to_tensor(self.env.obs_history[t], dtype=tf.float32) # (1,4)
         else:
             padded_frames = tf.pad(frame_tensor, paddings=[[0, 0], [0, 0], [0, padding_size]], constant_values=0)
 #         padded_frames = tf.expand_dims(padded_frames, 0) # dummy batch dim

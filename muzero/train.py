@@ -83,7 +83,7 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
             # tf.summary.histogram('3. Targets/Reward target dist k=0', rt0d, step=i, buckets=5)
             tf.summary.histogram('3. Targets/Reward target dist k=1', rt1d, step=i, buckets=5)
             tf.summary.histogram('3. Targets/Reward target dist k=-1', rtfd, step=i, buckets=5)
-            if (i+1)%50==0:
+            if (i+1)%100==0:
                 _, total_reward = play_game(config, network, greedy_policy=True, render=False)
                 tf.summary.scalar('Reward', total_reward, step=i)
 
