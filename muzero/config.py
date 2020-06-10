@@ -61,7 +61,7 @@ class MuZeroConfig(object):
         self.selfplay_iterations = int(selfplay_iterations) ##
         self.training_steps = int(1e6)
         self.checkpoint_interval = int(checkpoint_interval) #1e3
-        self.window_size = int(1e4)
+        self.window_size = int(1e3)
         self.batch_size = batch_size
         self.num_unroll_steps = 5 # 5
         self.td_steps = td_steps

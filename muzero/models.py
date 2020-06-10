@@ -129,7 +129,7 @@ def DynaNet_FC(input_shape, repr_size, h_size, support_size, regularizer):
     s_new = Dense(repr_size, kernel_regularizer=regularizer)(s_new)
     s_new = ReLU()(s_new)
 
-    r = Dense(6, kernel_regularizer=regularizer)(r)
+    r = Dense(16, kernel_regularizer=regularizer)(r)
     r = ReLU()(r)
     
     s_new = Dense(repr_size, kernel_regularizer=regularizer)(s_new)
