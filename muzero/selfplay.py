@@ -30,8 +30,6 @@ def run_selfplay(config: MuZeroConfig, storage: SharedStorage,
         game,_ = play_game(config, network)
         game.prepare_to_save()
         replay_buffer.save_game.remote(game) # should we use ray.put() here??
-
-
     
 ### Run 1 Game/Trajectory ###
     

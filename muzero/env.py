@@ -76,20 +76,38 @@ class Game(object):
         self.root_values = [] # values ν
         self.action_space_size = config.action_space_size
         self.gamma = config.discount
+        self.position_priorities = None
         self.config = config
 
     def prepare_to_save(self):
+        """
+        This needs to be called at the end of a game, either when it terminates or we hit the max step limit
+        """
         # Clean up for saving, no need to save the env object - sims can be expensive.
         self.env.gym_env.close()
         self.env.gym_env = None
+        # Calculate and store position priorities
+        self.position_priorities = self.calculate_position_priorities()
         # And I'm now about to do ground truth values, and try overtrain them
         self.ground_truth_values = discount_cumsum(self.rewards, self.gamma)
         # note this is a little weird in 'stay alive' style games, as the value decreases as the game goes on
         # in goal completion style (-1 until 0 when goal completed, value increases as you get closer to achieving the goal).
 
+    def calculate_position_priorities(self):
+        """
+        Un-normalised priorities - proportional to td-error
+        """
+        priorities = []
+        for i,v in enumerate(self.root_values):
+            z = self.compute_target_value(i, self.config.td_steps)
+            p = np.abs(v-z)**self.config.PER_alpha
+            priorities.append(p)
+        priorities = np.array(priorities)
+        return priorities
+
     def terminal(self) -> bool:
-        if self.env.done:
-            self.env.gym_env.close()
+        # if self.env.done:
+        #     self.env.gym_env.close()
         return self.env.done
     
     def legal_actions(self) -> List[int]:

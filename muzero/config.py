@@ -66,6 +66,10 @@ class MuZeroConfig(object):
         self.num_unroll_steps = 5 # 5
         self.td_steps = td_steps
 
+        # PER
+        self.PER_alpha = 1.0 # alpha = 0 is uniform sampling
+        self.PER_beta = 1.0
+
         self.weight_decay = 1e-4
         self.momentum = 0.9
 

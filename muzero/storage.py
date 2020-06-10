@@ -3,6 +3,7 @@ import ray
 import numpy as np
 import tensorflow as tf
 import pdb
+from _collections import deque
 
 from .config import MuZeroConfig
 from .env import Game
@@ -14,14 +15,25 @@ class ReplayBuffer(object):
     def __init__(self, config: MuZeroConfig):
         self.window_size = config.window_size
         self.batch_size = config.batch_size
-        self.buffer = []
+        self.buffer = deque(maxlen=config.window_size)
+        self.game_priorities = deque(maxlen=config.window_size)
         self.config = config
 
     def save_game(self, game):
-        # Pop off oldest replays to make space for new ones
-        if len(self.buffer) > self.window_size:
-            self.buffer.pop(0)
+        # Pop off oldest replays off the left of the deque to make space for new ones automatically
         self.buffer.append(game)
+        self.update_priorities(game)
+
+    def calculate_game_priority(self, game):
+        """
+        Can choose mean, sum, max over positional priorities to proxy for game priority
+        Todo: Adapt for SumTree for sub-linear performance?
+        """
+        return np.max(game.position_priorities)
+
+    def update_priorities(self, game):
+        gp = self.calculate_game_priority(game)
+        self.game_priorities.append(gp)
 
     def sample_batch(self, K: int, td: int):
         """
@@ -52,7 +64,7 @@ class ReplayBuffer(object):
                 vector[:pad_width[0]] = -1 # np.random.randint(20, 30, size=pad_width[0])
                 vector[vector.size-pad_width[1]:] = np.random.choice(vector[pad_width[0]:], size=pad_width[1])
 
-            action_history_padded = np.pad(action_history, (1, K-len(action_history)), mode=random_pad)#.astype('int16') # keep it signed because I use -1
+            action_history_padded = np.pad(action_history, (1, K-len(action_history)), mode=random_pad)
             actions.append(action_history_padded)
             
             z,u,pi,mask,policy_mask = g.make_target(i, K, td)
@@ -74,13 +86,21 @@ class ReplayBuffer(object):
 
     def sample_game(self) -> Game:
         # TODO: figure out sampling regime
+        # Todo: Add PER
+        # Todo: Add IS weighting
         # Sample game from buffer either uniformly or according to some priority e.g. importance sampling.
-        game_ix = random.randint(0,len(self.buffer)-1) # random uniform
+        p = np.array(self.game_priorities)
+        p /= p.sum()
+        game_ix = np.random.choice(len(self.buffer), p=p)
+        # game_ix = random.randint(0,len(self.buffer)-1) # random uniform
         return self.buffer[game_ix]
 
     def sample_position(self, game) -> int:
         # Sample position from game either uniformly or according to some priority.
-        pos_ix = random.randint(0,len(game.root_values)-1) # random uniform
+        p = np.array(self.game_priorities)
+        p /= p.sum()
+        pos_ix = np.random.choice(len(self.buffer), p=p)
+        # pos_ix = random.randint(0,len(game.root_values)-1) # random uniform
         return pos_ix
     
     def get_buffer_size(self):
