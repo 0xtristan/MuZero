@@ -35,7 +35,7 @@ class ReplayBuffer(object):
         gp = self.calculate_game_priority(game)
         self.game_priorities.append(gp)
 
-    def sample_batch(self, K: int, td: int):
+    def sample_batch(self, K: int, td: int, model_weights):
         """
         Inputs
             K: num unroll steps
@@ -71,15 +71,23 @@ class ReplayBuffer(object):
 
             action_history_padded = np.pad(action_history, (1, K-len(action_history)), mode=random_pad)
             actions.append(action_history_padded)
-            
-            z,u,pi,mask,policy_mask = g.make_target(i, K, td)
+
+            # z,u,pi,mask,policy_mask = g.make_target(i, K, td, network)
+            z,u,pi,mask,policy_mask = g.make_target.remote(g, i, K, td, model_weights)
             target_values.append(z)
             target_rewards.append(u)
             target_policies.append(pi)
             masks.append(mask)
             policy_masks.append(policy_mask)
+            ### weightings are not fetched remotely
             IS_weightings.append(IS_weighting)
-        
+
+        target_values = ray.get(target_values)
+        target_rewards = ray.get(target_rewards)
+        target_policies = ray.get(target_policies)
+        masks = ray.get(masks)
+        policy_masks = ray.get(policy_masks)
+
         return (
                 tf.stack(observations, axis=0),
                 tf.cast(tf.stack(actions, axis=0), dtype=tf.int32),

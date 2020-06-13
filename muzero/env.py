@@ -5,9 +5,11 @@ import tensorflow as tf
 import numpy as np
 import pdb
 from scipy.signal import lfilter
+import ray
 
 from .mcts_numpy import Node, ActionHistory
 from .config import MuZeroConfig
+from .models import Network, Network_FC, Network_CNN
 
 ENVS = {
     'breakout': 'Breakout-v0',
@@ -159,14 +161,20 @@ class Game(object):
     # The value target is the discounted root value of the search tree N steps
     # into the future, plus the discounted sum of all rewards until then.
     # Todo: We can swap this for more PPO style version later
-    def compute_target_value(self, current_index:int, td:int):
+    def compute_target_value(self, current_index:int, td:int, network: Network = None):
 
         bootstrap_index = current_index + td 
         # If our TD lookahead is still before the end of the game, the update with that 
         # future game state value estimate ν_{t+N}
         if bootstrap_index < len(self.root_values):
             # γ^N*ν_{t+N}
-            value = self.root_values[bootstrap_index] * self.gamma**td
+            if network is None:
+                value = self.root_values[bootstrap_index] * self.gamma**td
+            else:
+                # We take the actual obs to predict on not just the root values from MCTS in hidden states
+                obs = tf.expand_dims(self.make_image(t=current_index),0)
+                network_output = network.initial_inference(obs, convert_to_scalar = True)
+                value = tf.squeeze(network_output.value) * self.gamma**td
         else:
             value = 0
 
@@ -174,8 +182,9 @@ class Game(object):
         for i, reward in enumerate(self.rewards[current_index:bootstrap_index]):
             value += reward * self.gamma**i  
         return value
-    
-    def make_target(self, t: int, K: int, td: int):
+
+    @ray.remote(num_return_vals=5)
+    def make_target(self, t: int, K: int, td: int, network_weights = None):
         """
         (value,reward,policy) target for each unroll step t to t+K
         This is taken from actuals results of the game (to be stored in replay buffer)
@@ -191,8 +200,9 @@ class Game(object):
         # K + 1 iterations
         for current_index in range(t, t + K + 1):
             ## Value Target z_{t+K} ##
-
-            value = self.compute_target_value(current_index, td)
+            network = Network_FC(self.config) if self.config.model_type == "fc" else Network_CNN(self.config)
+            network.set_weights(network_weights)
+            value = self.compute_target_value(current_index, td, network)
                 
             ## Reward u_{t+K} and Action π_{t+K} Targets ##
             

@@ -40,7 +40,7 @@ def train_network(config: MuZeroConfig, storage: SharedStorage,
 
         if i % config.checkpoint_interval == 0:
             storage.save_weights.remote(i, network.get_weights())
-        ray_id = replay_buffer.sample_batch.remote(config.num_unroll_steps, config.td_steps)
+        ray_id = replay_buffer.sample_batch.remote(config.num_unroll_steps, config.td_steps, network.get_weights())
         batch = ray.get(ray_id)
         vl, rl, pl, wrl, tl, fg, gg, hg, v_pred, r_pred, p_pred, v_targ, r_targ, p_targ, acts, vp0d, vp1d, vpfd, vt0d, vt1d, vtfd, rp0d, rp1d, rpfd, rt0d, rt1d, rtfd = train_step(i, optimizer, network, batch, config.weight_decay)
         network.steps += 1
