@@ -16,13 +16,13 @@ class ReplayBuffer(object):
         self.window_size = config.window_size
         self.batch_size = config.batch_size
         self.buffer = deque(maxlen=config.window_size)
-        self.game_priorities = deque(maxlen=config.window_size)
+        # self.game_priorities = deque(maxlen=config.window_size)
         self.config = config
 
     def save_game(self, game):
         # Pop off oldest replays off the left of the deque to make space for new ones automatically
         self.buffer.append(game)
-        self.update_priorities(game)
+        # self.update_priorities(game)
 
     def calculate_game_priority(self, game):
         """
@@ -50,15 +50,20 @@ class ReplayBuffer(object):
         target_policies = []
         masks = []
         policy_masks = []
+        IS_weightings = []
         
         # Sample a batch size worth of games
         games = [self.sample_game() for _ in range(self.batch_size)]
-        game_pos = [(g, self.sample_position(g)) for g in games]
+        game_pos = [(g, gp, *self.sample_position(g)) for g, gp in games]
         
-        for g, i in game_pos:
+        for g, gp, i, pp in game_pos:
             observations.append(g.make_image(i))
             # Use -1 padding for actions, this should get masked anyway
             action_history = g.history[i:i + K]
+            # Game and position IS weightings
+            game_weighting = np.ones(K+1)/gp
+            position_weighting = np.pad(pp[i:i+K+1], (0, (K+1)-len(pp[i:i+K+1])), constant_values=(1,0)) # Todo: how to weight absorbing states?
+            IS_weighting = (game_weighting*position_weighting)**self.config.PER_beta
 
             def random_pad(vector, pad_width, iaxis, kwargs):
                 vector[:pad_width[0]] = -1 # np.random.randint(20, 30, size=pad_width[0])
@@ -73,6 +78,7 @@ class ReplayBuffer(object):
             target_policies.append(pi)
             masks.append(mask)
             policy_masks.append(policy_mask)
+            IS_weightings.append(IS_weighting)
         
         return (
                 tf.stack(observations, axis=0),
@@ -81,7 +87,8 @@ class ReplayBuffer(object):
                 tf.expand_dims(tf.stack(target_rewards, axis=0),axis=-1),
                 tf.stack(target_policies, axis=0),
                 tf.expand_dims(tf.cast(tf.stack(masks, axis=0),dtype=tf.float32),axis=-1),
-                tf.expand_dims(tf.cast(tf.stack(policy_masks, axis=0), dtype=tf.float32), axis = -1)
+                tf.expand_dims(tf.cast(tf.stack(policy_masks, axis=0), dtype=tf.float32), axis = -1),
+                tf.cast(tf.expand_dims(tf.stack(IS_weightings, axis=0), axis=-1), dtype=tf.float32)
                )
 
     def sample_game(self) -> Game:
@@ -89,19 +96,19 @@ class ReplayBuffer(object):
         # Todo: Add PER
         # Todo: Add IS weighting
         # Sample game from buffer either uniformly or according to some priority e.g. importance sampling.
-        p = np.array(self.game_priorities)
-        p /= p.sum()
-        game_ix = np.random.choice(len(self.buffer), p=p)
-        # game_ix = random.randint(0,len(self.buffer)-1) # random uniform
-        return self.buffer[game_ix]
+        # p = np.array(self.game_priorities)
+        # p /= p.sum()
+        # game_ix = np.random.choice(len(self.buffer), p=p)
+        game_ix = random.randint(0,len(self.buffer)-1) # random uniform
+        return self.buffer[game_ix], self.get_buffer_size()
 
     def sample_position(self, game) -> int:
         # Sample position from game either uniformly or according to some priority.
-        p = np.array(self.game_priorities)
+        p = np.array(game.position_priorities)
         p /= p.sum()
-        pos_ix = np.random.choice(len(self.buffer), p=p)
+        pos_ix = np.random.choice(len(game.root_values), p=p)
         # pos_ix = random.randint(0,len(game.root_values)-1) # random uniform
-        return pos_ix
+        return pos_ix, p
     
     def get_buffer_size(self):
         return len(self.buffer)

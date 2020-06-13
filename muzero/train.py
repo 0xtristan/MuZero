@@ -22,7 +22,7 @@ from .selfplay import play_game
 def train_network(config: MuZeroConfig, storage: SharedStorage,
                                     replay_buffer: ReplayBuffer):
     while ray.get(replay_buffer.get_buffer_size.remote()) < 1:
-        time.sleep(1)
+        time.sleep(0.1)
     # Network at start of training will have shit weights
     network = Network_FC(config) if config.model_type == "fc" else Network_CNN(config) # Network()
 #     network_weights = ray.get(storage.latest_weights.remote())
@@ -123,7 +123,7 @@ def train_step(step: int, optimizer: Optimizer, network: Network, batch, weight_
     value_target_k0_dist, value_target_k1_dist, value_target_kf_dist = [], [], []
     reward_target_k0_dist, reward_target_k1_dist, reward_target_kf_dist = [], [], []
 
-    observations, actions, target_values, target_rewards, target_policies, masks, policy_masks = batch
+    observations, actions, target_values, target_rewards, target_policies, masks, policy_masks, IS_weightings = batch
     with tf.GradientTape() as f_tape, tf.GradientTape() as g_tape, tf.GradientTape() as h_tape:
         loss = 0
         K = actions.shape[1] # seqlen
@@ -163,9 +163,9 @@ def train_step(step: int, optimizer: Optimizer, network: Network, batch, weight_
             # reward_masked = reward*mask_
             # policy_logits_masked = policy_logits*mask_
             
-            value_loss = ce_loss(value_masked, scalar_to_support(z_masked, network.value_support_size), mask)
-            reward_loss = ce_loss(reward_masked, scalar_to_support(u_masked, network.reward_support_size), mask)
-            policy_loss = ce_loss(policy_logits_masked, pi_masked, mask)
+            value_loss = ce_loss(value_masked, scalar_to_support(z_masked, network.value_support_size), mask, IS_weightings[:,k])
+            reward_loss = ce_loss(reward_masked, scalar_to_support(u_masked, network.reward_support_size), mask, IS_weightings[:,k])
+            policy_loss = ce_loss(policy_logits_masked, pi_masked, mask, IS_weightings[:,k])
             combined_loss = 1.0*value_loss + 1.0*reward_loss + 1.0*policy_loss
 
             loss += scale_gradient(combined_loss, gradient_scale)
@@ -212,9 +212,6 @@ def train_step(step: int, optimizer: Optimizer, network: Network, batch, weight_
                 value_target_kf_dist.append(z)
                 reward_target_kf_dist.append(u)
         
-#         total_loss_metric(loss)
-#         total_reward()
-        
         # Todo: Eventually we want to use keras layer regularization or AdamW
         weight_reg_loss = 0
         for weights in network.get_weights():
@@ -246,7 +243,7 @@ def mse_loss(y_pred, y_true) -> float:
     # MSE in board games, cross entropy between categorical values in Atari. 
     return tf.reduce_sum(tf.reduce_sum(tf.math.squared_difference(y_pred, y_true),axis=1)*tf.squeeze(mask)) / tf.reduce_sum(tf.squeeze(mask))
 
-def ce_loss(y_pred, y_true, mask) -> float:
+def ce_loss(y_pred, y_true, mask, weighting) -> float:
     # MSE in board games, cross entropy between categorical values in Atari.
     # return  tf.math.divide_no_nan( tf.reduce_sum(tf.nn.softmax_cross_entropy_with_logits(labels=y_true, logits=y_pred)*mask) , tf.reduce_sum(mask) )
     if y_pred.shape[0]==0 or y_true.shape[0]==0:

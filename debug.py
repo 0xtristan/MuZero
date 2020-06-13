@@ -26,7 +26,7 @@ def make_atari_config() -> MuZeroConfig:
         num_simulations=50, # >20 usually works best
         batch_size=128,#1024,
         td_steps=20,#10
-        num_actors=10,#350
+        num_actors=1,#350
         lr_init=0.05,#0.05
         lr_decay_steps=350e3,
         checkpoint_interval=10,
