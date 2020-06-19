@@ -35,7 +35,7 @@ class ReplayBuffer(object):
         gp = self.calculate_game_priority(game)
         self.game_priorities.append(gp)
 
-    def sample_batch(self, K: int, td: int, model_weights):
+    def sample_batch(self, K: int, td: int, network_weights):
         """
         Inputs
             K: num unroll steps
@@ -51,6 +51,7 @@ class ReplayBuffer(object):
         masks = []
         policy_masks = []
         IS_weightings = []
+        observations_all = []
         
         # Sample a batch size worth of games
         games = [self.sample_game() for _ in range(self.batch_size)]
@@ -58,6 +59,8 @@ class ReplayBuffer(object):
         
         for g, gp, i, pp in game_pos:
             observations.append(g.make_image(i))
+            # Todo: this needs to be td steps aheadBut
+            observations_all.append([g.make_image(t) for t in range(i,i+K+1)])
             # Use -1 padding for actions, this should get masked anyway
             action_history = g.history[i:i + K]
             # Game and position IS weightings
@@ -72,26 +75,29 @@ class ReplayBuffer(object):
             action_history_padded = np.pad(action_history, (1, K-len(action_history)), mode=random_pad)
             actions.append(action_history_padded)
 
-            # z,u,pi,mask,policy_mask = g.make_target(i, K, td, network)
-            z,u,pi,mask,policy_mask = g.make_target.remote(g, i, K, td, model_weights)
+            z,u,pi,mask,policy_mask = g.make_target(i, K, td)
+            # z,u,pi,mask,policy_mask = g.make_target.remote(g, i, K, td, network_weights)
             target_values.append(z)
             target_rewards.append(u)
             target_policies.append(pi)
             masks.append(mask)
             policy_masks.append(policy_mask)
-            ### weightings are not fetched remotely
             IS_weightings.append(IS_weighting)
 
-        target_values = ray.get(target_values)
-        target_rewards = ray.get(target_rewards)
-        target_policies = ray.get(target_policies)
-        masks = ray.get(masks)
-        policy_masks = ray.get(policy_masks)
+        network = Network_FC(self.config) if self.config.model_type == "fc" else Network_CNN(self.config)
+        network.set_weights(network_weights)
+        # value = self.compute_target_value(current_index, td, network)
+        target_values = []
+        for i in range(K+1):
+            obs = tf.stack([o[i] for o in observations_all], axis=0)
+            network_output = network.initial_inference(obs, convert_to_scalar=True)
+            target_values.append(network_output * 0.997 ** td)
 
         return (
                 tf.stack(observations, axis=0),
                 tf.cast(tf.stack(actions, axis=0), dtype=tf.int32),
-                tf.expand_dims(tf.cast(tf.stack(target_values, axis=0),dtype=tf.float32),axis=-1),
+                # tf.expand_dims(tf.cast(tf.stack(target_values, axis=0),dtype=tf.float32),axis=-1),
+                tf.expand_dims(tf.cast(tf.stack(target_values, axis=1), dtype=tf.float32), axis=-1),
                 tf.expand_dims(tf.stack(target_rewards, axis=0),axis=-1),
                 tf.stack(target_policies, axis=0),
                 tf.expand_dims(tf.cast(tf.stack(masks, axis=0),dtype=tf.float32),axis=-1),

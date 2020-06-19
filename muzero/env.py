@@ -183,7 +183,6 @@ class Game(object):
             value += reward * self.gamma**i  
         return value
 
-    @ray.remote(num_return_vals=5)
     def make_target(self, t: int, K: int, td: int, network_weights = None):
         """
         (value,reward,policy) target for each unroll step t to t+K
@@ -198,11 +197,11 @@ class Game(object):
         # We use a boolean masking vector to indicate the end of a sequence (à la NLP)
         mask, policy_mask = [], []
         # K + 1 iterations
+        # network = Network_FC(self.config) if self.config.model_type == "fc" else Network_CNN(self.config)
+        # network.set_weights(network_weights)
         for current_index in range(t, t + K + 1):
             ## Value Target z_{t+K} ##
-            network = Network_FC(self.config) if self.config.model_type == "fc" else Network_CNN(self.config)
-            network.set_weights(network_weights)
-            value = self.compute_target_value(current_index, td, network)
+            value = self.compute_target_value(current_index, td)
                 
             ## Reward u_{t+K} and Action π_{t+K} Targets ##
             
